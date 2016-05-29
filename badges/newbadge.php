@@ -1,4 +1,5 @@
 <?php
+
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -23,7 +24,6 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @author     Yuliya Bozhko <yuliya.bozhko@totaralms.com>
  */
-
 require_once(dirname(dirname(__FILE__)) . '/config.php');
 require_once($CFG->libdir . '/badgeslib.php');
 require_once($CFG->dirroot . '/badges/edit_form.php');
@@ -90,11 +90,12 @@ if ($form->is_cancelled()) {
     $fordb->type = $type;
     $fordb->courseid = ($type == BADGE_TYPE_COURSE) ? $courseid : null;
     $fordb->messagesubject = get_string('messagesubject', 'badges');
-    $fordb->message = get_string('messagebody', 'badges',
-            html_writer::link($CFG->wwwroot . '/badges/mybadges.php', get_string('managebadges', 'badges')));
+    $fordb->message = get_string('messagebody', 'badges', html_writer::link($CFG->wwwroot . '/badges/mybadges.php', get_string('managebadges', 'badges')));
     $fordb->attachment = 1;
     $fordb->notification = BADGE_MESSAGE_NEVER;
     $fordb->status = BADGE_STATUS_INACTIVE;
+    $fordb->cornerstone = $data->cornerstone;
+    $fordb->points = $data->points;
 
     $newid = $DB->insert_record('badge', $fordb, true);
 
