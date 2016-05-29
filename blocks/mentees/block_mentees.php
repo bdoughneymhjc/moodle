@@ -1,4 +1,5 @@
 <?php
+
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -21,7 +22,6 @@
  * @copyright  1999 onwards Martin Dougiamas (http://dougiamas.com)
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-
 class block_mentees extends block_base {
 
     function init() {
@@ -56,13 +56,30 @@ class block_mentees extends block_base {
                                                    WHERE ra.userid = ?
                                                          AND ra.contextid = c.id
                                                          AND c.instanceid = u.id
-                                                         AND c.contextlevel = ".CONTEXT_USER, array($USER->id))) {
+                                                         AND c.contextlevel = " . CONTEXT_USER, array($USER->id))) {
 
-            $this->content->text = '<ul>';
+            $this->content->text = '<dl>';
+            $this->content->text .= '<dt><b>Online Reporting</b></dt>';
             foreach ($usercontexts as $usercontext) {
-                $this->content->text .= '<li><a href="'.$CFG->wwwroot.'/user/view.php?id='.$usercontext->instanceid.'&amp;course='.SITEID.'">'.fullname($usercontext).'</a></li>';
+                $stuid = $usercontext->instanceid;
+                $this->content->text .= '<dd><img src="' . $CFG->wwwroot . '/pix/ereport.png" style="vertical-align: middle;" /> <a href="' . $CFG->wwwroot . '/grade/allmygrades.php?user=' . $stuid . '&view=current&type=ereport" style="vertical-align: middle;">Current Year\'s eReport</a></dd>';
+                $this->content->text .= '<dd><img src="' . $CFG->wwwroot . '/pix/pereport.png" style="vertical-align: middle;" /> <a href="' . $CFG->wwwroot . '/grade/allmygrades.php?user=' . $stuid . '&view=all&type=ereport" style="vertical-align: middle;">Complete eReport (All Years)</a></dd>';
+                $this->content->text .= '<dd><img src="' . $CFG->wwwroot . '/pix/natreport.png" style="vertical-align: middle;" /> <a href="' . $CFG->wwwroot . '/grade/natstandards.php?user=' . $stuid . '&view=current&type=natstandards" style="vertical-align: middle;">Current Year\'s National Standards eReport (Year 7 &amp; 8 only)</a></dd>';
+                $this->content->text .= '<dd><img src="' . $CFG->wwwroot . '/pix/pnatreport.png" style="vertical-align: middle;" /> <a href="' . $CFG->wwwroot . '/grade/natstandards.php?user=' . $stuid . '&view=all&type=natstandards" style="vertical-align: middle;">Complete National Standards eReport (Year 7 &amp; 8 only)</a></dd>';
+                $this->content->text .= '<dd><img src="' . $CFG->wwwroot . '/pix/easttlereport.png" style="vertical-align: middle;" /> <a href="' . $CFG->wwwroot . '/grade/easttlegrades.php?user=' . $stuid . '" style="vertical-align: middle;">e-asTTle Results</a></dd>';
+                $this->content->text .= '<dd><img src="' . $CFG->wwwroot . '/pix/selfreflection.png" style="vertical-align: middle;" /> <a href="' . $CFG->wwwroot . '/grade/reflection.php?user=' . $stuid . '&view=current" style="vertical-align: middle;">' . fullname($usercontext) . '\'s Self Reflection</a></dd>';
             }
-            $this->content->text .= '</ul>';
+            $this->content->text .= '<dt><b>Current Courses</b></dt>';
+            if ($courses = enrol_get_my_courses(NULL, 'visible DESC, startdate DESC, fullname ASC')) {
+                foreach ($courses as $course) {
+                    if ($course->startdate > mktime(0, 0, 0, 0, 0, date("Y"))) {
+                        $linkcss = $course->visible ? "" : " class=\"dimmed\" ";
+                        $this->content->text .="<dd><a $linkcss title=\"" . format_string($course->shortname) . "\" " .
+                                "href=\"$CFG->wwwroot/course/view.php?id=$course->id\">" . format_string($course->fullname) . "</a></dd>";
+                    }
+                }
+            }
+            $this->content->text .= '</dl>';
         }
 
         $this->content->footer = '';
@@ -78,5 +95,5 @@ class block_mentees extends block_base {
     public function instance_can_be_docked() {
         return parent::instance_can_be_docked() && isset($this->config->title) && !empty($this->config->title);
     }
-}
 
+}
