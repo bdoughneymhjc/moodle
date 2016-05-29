@@ -1,4 +1,5 @@
 <?php
+
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -23,7 +24,6 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @author     Yuliya Bozhko <yuliya.bozhko@totaralms.com>
  */
-
 defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->libdir . '/formslib.php');
@@ -42,6 +42,14 @@ class edit_details_form extends moodleform {
     public function definition() {
         global $CFG;
 
+        // bdoughney added cornerstones info to badges
+        $cornerstones = array();
+        $cornerstones[] = NULL;
+        $cornerstones[] = "Academic";
+        $cornerstones[] = "Cultural";
+        $cornerstones[] = "Leadership";
+        $cornerstones[] = "Sports";
+
         $mform = $this->_form;
         $badge = (isset($this->_customdata['badge'])) ? $this->_customdata['badge'] : false;
         $action = $this->_customdata['action'];
@@ -56,6 +64,9 @@ class edit_details_form extends moodleform {
         $mform->addElement('textarea', 'description', get_string('description', 'badges'), 'wrap="virtual" rows="8" cols="70"');
         $mform->setType('description', PARAM_NOTAGS);
         $mform->addRule('description', null, 'required');
+
+        $mform->addElement('select', 'cornerstone', 'Cornerstone Category', $cornerstones);
+        $mform->addElement('text', 'points', 'Cornerstone Points', array('size' => '4'));
 
         $str = $action == 'new' ? get_string('badgeimage', 'badges') : get_string('newimage', 'badges');
         $imageoptions = array('maxbytes' => 262144, 'accepted_types' => array('web_image'));
@@ -89,14 +100,14 @@ class edit_details_form extends moodleform {
         $mform->addElement('header', 'issuancedetails', get_string('issuancedetails', 'badges'));
 
         $issuancedetails = array();
-        $issuancedetails[] =& $mform->createElement('radio', 'expiry', '', get_string('never', 'badges'), 0);
-        $issuancedetails[] =& $mform->createElement('static', 'none_break', null, '<br/>');
-        $issuancedetails[] =& $mform->createElement('radio', 'expiry', '', get_string('fixed', 'badges'), 1);
-        $issuancedetails[] =& $mform->createElement('date_selector', 'expiredate', '');
-        $issuancedetails[] =& $mform->createElement('static', 'expirydate_break', null, '<br/>');
-        $issuancedetails[] =& $mform->createElement('radio', 'expiry', '', get_string('relative', 'badges'), 2);
-        $issuancedetails[] =& $mform->createElement('duration', 'expireperiod', '', array('defaultunit' => 86400, 'optional' => false));
-        $issuancedetails[] =& $mform->createElement('static', 'expiryperiods_break', null, get_string('after', 'badges'));
+        $issuancedetails[] = & $mform->createElement('radio', 'expiry', '', get_string('never', 'badges'), 0);
+        $issuancedetails[] = & $mform->createElement('static', 'none_break', null, '<br/>');
+        $issuancedetails[] = & $mform->createElement('radio', 'expiry', '', get_string('fixed', 'badges'), 1);
+        $issuancedetails[] = & $mform->createElement('date_selector', 'expiredate', '');
+        $issuancedetails[] = & $mform->createElement('static', 'expirydate_break', null, '<br/>');
+        $issuancedetails[] = & $mform->createElement('radio', 'expiry', '', get_string('relative', 'badges'), 2);
+        $issuancedetails[] = & $mform->createElement('duration', 'expireperiod', '', array('defaultunit' => 86400, 'optional' => false));
+        $issuancedetails[] = & $mform->createElement('static', 'expiryperiods_break', null, get_string('after', 'badges'));
 
         $mform->addGroup($issuancedetails, 'expirydategr', get_string('expirydate', 'badges'), array(' '), false);
         $mform->addHelpButton('expirydategr', 'expirydate', 'badges');
@@ -176,11 +187,9 @@ class edit_details_form extends moodleform {
 
         // Check for duplicate badge names.
         if ($data['action'] == 'new') {
-            $duplicate = $DB->record_exists_select('badge', 'name = :name AND status != :deleted',
-                array('name' => $data['name'], 'deleted' => BADGE_STATUS_ARCHIVED));
+            $duplicate = $DB->record_exists_select('badge', 'name = :name AND status != :deleted', array('name' => $data['name'], 'deleted' => BADGE_STATUS_ARCHIVED));
         } else {
-            $duplicate = $DB->record_exists_select('badge', 'name = :name AND id != :badgeid AND status != :deleted',
-                array('name' => $data['name'], 'badgeid' => $data['id'], 'deleted' => BADGE_STATUS_ARCHIVED));
+            $duplicate = $DB->record_exists_select('badge', 'name = :name AND id != :badgeid AND status != :deleted', array('name' => $data['name'], 'badgeid' => $data['id'], 'deleted' => BADGE_STATUS_ARCHIVED));
         }
 
         if ($duplicate) {
@@ -189,6 +198,7 @@ class edit_details_form extends moodleform {
 
         return $errors;
     }
+
 }
 
 /**
@@ -196,6 +206,7 @@ class edit_details_form extends moodleform {
  *
  */
 class edit_message_form extends moodleform {
+
     public function definition() {
         global $CFG, $OUTPUT;
 
@@ -230,12 +241,12 @@ class edit_message_form extends moodleform {
         }
 
         $options = array(
-                BADGE_MESSAGE_NEVER   => get_string('never'),
-                BADGE_MESSAGE_ALWAYS  => get_string('notifyevery', 'badges'),
-                BADGE_MESSAGE_DAILY   => get_string('notifydaily', 'badges'),
-                BADGE_MESSAGE_WEEKLY  => get_string('notifyweekly', 'badges'),
-                BADGE_MESSAGE_MONTHLY => get_string('notifymonthly', 'badges'),
-                );
+            BADGE_MESSAGE_NEVER => get_string('never'),
+            BADGE_MESSAGE_ALWAYS => get_string('notifyevery', 'badges'),
+            BADGE_MESSAGE_DAILY => get_string('notifydaily', 'badges'),
+            BADGE_MESSAGE_WEEKLY => get_string('notifyweekly', 'badges'),
+            BADGE_MESSAGE_MONTHLY => get_string('notifymonthly', 'badges'),
+        );
         $mform->addElement('select', 'notification', get_string('notification', 'badges'), $options);
         $mform->addHelpButton('notification', 'notification', 'badges');
 
@@ -248,4 +259,5 @@ class edit_message_form extends moodleform {
 
         return $errors;
     }
+
 }
