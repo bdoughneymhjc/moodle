@@ -35,8 +35,6 @@
  * @copyright  1999 onwards Martin Dougiamas  http://dougiamas.com
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-
-
 if (defined('STDIN')) {
     fwrite(STDERR, "ERROR: This script no longer supports CLI, please use admin/cli/cron.php instead\n");
     exit(1);
@@ -49,8 +47,8 @@ define('WEB_CRON_EMULATED_CLI', 'defined'); // ugly ugly hack, do not use elsewh
 define('NO_OUTPUT_BUFFERING', true);
 
 require('../config.php');
-require_once($CFG->libdir.'/clilib.php');
-require_once($CFG->libdir.'/cronlib.php');
+require_once($CFG->libdir . '/clilib.php');
+require_once($CFG->libdir . '/cronlib.php');
 
 // extra safety
 \core\session\manager::write_close();
@@ -74,8 +72,31 @@ if (!empty($CFG->cronremotepassword)) {
 // send mime type and encoding
 @header('Content-Type: text/plain; charset=utf-8');
 
+//bdoughney fix for multiple crons running when it is slow
+$timenow = time();
+mtrace("Server Time: " . date('r', $timenow) . "\n\n");
+$maxagehours = 8;
+$lockfile = $CFG->dataroot . '/cron.is.running';
+if (file_exists($lockfile)) {
+    $filetime = filemtime($lockfile);
+    if ($filetime < $timenow - $maxagehours * 60 * 60) {
+        mtrace("Warning: deleting lock file, more than $maxagehours hours old");
+        unlink($lockfile);
+    } else {
+        mtrace("Exiting: cron is already running, since " . date('r', $filetime));
+        exit;
+    }
+}
+file_put_contents($lockfile, "# While this file exists, cron is running (or has crashed).
+# This file is valid until " . date('r', $timenow + $maxagehours * 60 * 60) . "\n");
+
 // we do not want html markup in emulated CLI
 @ini_set('html_errors', 'off');
 
 // execute the cron
 cron_run();
+
+//bdoughney more of the fix
+unlink($lockfile);
+mtrace("Cron script completed correctly");
+//end of the fix for multiple crons running when slow
