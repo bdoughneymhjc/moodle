@@ -1,4 +1,5 @@
 <?php
+
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -23,7 +24,6 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @author     Yuliya Bozhko <yuliya.bozhko@totaralms.com>
  */
-
 defined('MOODLE_INTERNAL') || die();
 
 /* Include required award criteria library. */
@@ -31,7 +31,7 @@ require_once($CFG->dirroot . '/badges/criteria/award_criteria.php');
 
 /*
  * Number of records per page.
-*/
+ */
 define('BADGE_PERPAGE', 50);
 
 /*
@@ -103,16 +103,20 @@ define('BADGE_BACKPACKURL', 'https://backpack.openbadges.org');
  *
  */
 class badge {
+
     /** @var int Badge id */
     public $id;
 
     /** Values from the table 'badge' */
     public $name;
     public $description;
+    public $cornerstone;
+    public $points;
     public $timecreated;
     public $timemodified;
     public $usercreated;
     public $usermodified;
+    public $image;
     public $issuername;
     public $issuerurl;
     public $issuercontact;
@@ -145,7 +149,7 @@ class badge {
             print_error('error:nosuchbadge', 'badges', $badgeid);
         }
 
-        foreach ((array)$data as $field => $value) {
+        foreach ((array) $data as $field => $value) {
             if (property_exists($this, $field)) {
                 $this->{$field} = $value;
             }
@@ -174,8 +178,8 @@ class badge {
      */
     public static function get_aggregation_methods() {
         return array(
-                BADGE_CRITERIA_AGGREGATION_ALL => get_string('all', 'badges'),
-                BADGE_CRITERIA_AGGREGATION_ANY => get_string('any', 'badges'),
+            BADGE_CRITERIA_AGGREGATION_ALL => get_string('all', 'badges'),
+            BADGE_CRITERIA_AGGREGATION_ANY => get_string('any', 'badges'),
         );
     }
 
@@ -188,17 +192,17 @@ class badge {
 
         if ($this->type == BADGE_TYPE_COURSE) {
             $criteriatypes = array(
-                    BADGE_CRITERIA_TYPE_OVERALL,
-                    BADGE_CRITERIA_TYPE_MANUAL,
-                    BADGE_CRITERIA_TYPE_COURSE,
-                    BADGE_CRITERIA_TYPE_ACTIVITY
+                BADGE_CRITERIA_TYPE_OVERALL,
+                BADGE_CRITERIA_TYPE_MANUAL,
+                BADGE_CRITERIA_TYPE_COURSE,
+                BADGE_CRITERIA_TYPE_ACTIVITY
             );
         } else if ($this->type == BADGE_TYPE_SITE) {
             $criteriatypes = array(
-                    BADGE_CRITERIA_TYPE_OVERALL,
-                    BADGE_CRITERIA_TYPE_MANUAL,
-                    BADGE_CRITERIA_TYPE_COURSESET,
-                    BADGE_CRITERIA_TYPE_PROFILE,
+                BADGE_CRITERIA_TYPE_OVERALL,
+                BADGE_CRITERIA_TYPE_MANUAL,
+                BADGE_CRITERIA_TYPE_COURSESET,
+                BADGE_CRITERIA_TYPE_PROFILE,
             );
         }
 
@@ -289,7 +293,7 @@ class badge {
      */
     public function is_active() {
         if (($this->status == BADGE_STATUS_ACTIVE) ||
-            ($this->status == BADGE_STATUS_ACTIVE_LOCKED)) {
+                ($this->status == BADGE_STATUS_ACTIVE_LOCKED)) {
             return true;
         }
         return false;
@@ -399,7 +403,7 @@ class badge {
 
         if ($result) {
             // Trigger badge awarded event.
-            $eventdata = array (
+            $eventdata = array(
                 'context' => $this->get_context(),
                 'objectid' => $this->id,
                 'relateduserid' => $userid,
@@ -546,9 +550,9 @@ class badge {
         global $DB;
         $criteria = array();
 
-        if ($records = (array)$DB->get_records('badge_criteria', array('badgeid' => $this->id))) {
+        if ($records = (array) $DB->get_records('badge_criteria', array('badgeid' => $this->id))) {
             foreach ($records as $record) {
-                $criteria[$record->criteriatype] = award_criteria::build((array)$record);
+                $criteria[$record->criteriatype] = award_criteria::build((array) $record);
             }
         }
 
@@ -655,6 +659,7 @@ class badge {
         // Finally, remove badge itself.
         $DB->delete_records('badge', array('id' => $this->id));
     }
+
 }
 
 /**
@@ -690,16 +695,16 @@ function badges_notify_badge_award(badge $badge, $userid, $issued, $filepathhash
 
     // Notify recipient.
     $eventdata = new stdClass();
-    $eventdata->component         = 'moodle';
-    $eventdata->name              = 'badgerecipientnotice';
-    $eventdata->userfrom          = $userfrom;
-    $eventdata->userto            = $userto;
-    $eventdata->notification      = 1;
-    $eventdata->subject           = $badge->messagesubject;
-    $eventdata->fullmessage       = $plaintext;
+    $eventdata->component = 'moodle';
+    $eventdata->name = 'badgerecipientnotice';
+    $eventdata->userfrom = $userfrom;
+    $eventdata->userto = $userto;
+    $eventdata->notification = 1;
+    $eventdata->subject = $badge->messagesubject;
+    $eventdata->fullmessage = $plaintext;
     $eventdata->fullmessageformat = FORMAT_HTML;
-    $eventdata->fullmessagehtml   = $message;
-    $eventdata->smallmessage      = '';
+    $eventdata->fullmessagehtml = $message;
+    $eventdata->smallmessage = '';
 
     // Attach badge image if possible.
     if (!empty($CFG->allowattachments) && $badge->attachment && is_string($filepathhash)) {
@@ -726,16 +731,16 @@ function badges_notify_badge_award(badge $badge, $userid, $issued, $filepathhash
         $creatorsubject = get_string('creatorsubject', 'badges', $badge->name);
 
         $eventdata = new stdClass();
-        $eventdata->component         = 'moodle';
-        $eventdata->name              = 'badgecreatornotice';
-        $eventdata->userfrom          = $userfrom;
-        $eventdata->userto            = $creator;
-        $eventdata->notification      = 1;
-        $eventdata->subject           = $creatorsubject;
-        $eventdata->fullmessage       = html_to_text($creatormessage);
+        $eventdata->component = 'moodle';
+        $eventdata->name = 'badgecreatornotice';
+        $eventdata->userfrom = $userfrom;
+        $eventdata->userto = $creator;
+        $eventdata->notification = 1;
+        $eventdata->subject = $creatorsubject;
+        $eventdata->fullmessage = html_to_text($creatormessage);
         $eventdata->fullmessageformat = FORMAT_HTML;
-        $eventdata->fullmessagehtml   = $creatormessage;
-        $eventdata->smallmessage      = '';
+        $eventdata->fullmessagehtml = $creatormessage;
+        $eventdata->smallmessage = '';
 
         message_send($eventdata);
         $DB->set_field('badge_issued', 'issuernotified', time(), array('badgeid' => $badge->id, 'userid' => $userid));
@@ -811,7 +816,7 @@ function badges_get_badges($type, $courseid = 0, $sort = '', $dir = '', $page = 
     }
     $fields = implode(', ', $userfields);
 
-    if ($courseid != 0 ) {
+    if ($courseid != 0) {
         $where .= "AND b.courseid = :courseid ";
         $params['courseid'] = $courseid;
     }
@@ -874,7 +879,7 @@ function badges_get_user_badges($userid, $courseid = 0, $page = 0, $perpage = 0,
 
     if (!empty($search)) {
         $sql .= ' AND (' . $DB->sql_like('b.name', ':search', false) . ') ';
-        $params['search'] = '%'.$DB->sql_like_escape($search).'%';
+        $params['search'] = '%' . $DB->sql_like_escape($search) . '%';
     }
     if ($onlypublic) {
         $sql .= ' AND (bi.visible = 1) ';
@@ -902,28 +907,24 @@ function badges_add_course_navigation(navigation_node $coursenode, stdClass $cou
     $coursecontext = context_course::instance($course->id);
     $isfrontpage = (!$coursecontext || $course->id == $SITE->id);
     $canmanage = has_any_capability(array('moodle/badges:viewawarded',
-                                          'moodle/badges:createbadge',
-                                          'moodle/badges:awardbadge',
-                                          'moodle/badges:configurecriteria',
-                                          'moodle/badges:configuremessages',
-                                          'moodle/badges:configuredetails',
-                                          'moodle/badges:deletebadge'), $coursecontext);
+        'moodle/badges:createbadge',
+        'moodle/badges:awardbadge',
+        'moodle/badges:configurecriteria',
+        'moodle/badges:configuremessages',
+        'moodle/badges:configuredetails',
+        'moodle/badges:deletebadge'), $coursecontext);
 
     if (!empty($CFG->enablebadges) && !empty($CFG->badges_allowcoursebadges) && !$isfrontpage && $canmanage) {
-        $coursenode->add(get_string('coursebadges', 'badges'), null,
-                navigation_node::TYPE_CONTAINER, null, 'coursebadges',
-                new pix_icon('i/badge', get_string('coursebadges', 'badges')));
+        $coursenode->add(get_string('coursebadges', 'badges'), null, navigation_node::TYPE_CONTAINER, null, 'coursebadges', new pix_icon('i/badge', get_string('coursebadges', 'badges')));
 
         $url = new moodle_url('/badges/index.php', array('type' => BADGE_TYPE_COURSE, 'id' => $course->id));
 
-        $coursenode->get('coursebadges')->add(get_string('managebadges', 'badges'), $url,
-            navigation_node::TYPE_SETTING, null, 'coursebadges');
+        $coursenode->get('coursebadges')->add(get_string('managebadges', 'badges'), $url, navigation_node::TYPE_SETTING, null, 'coursebadges');
 
         if (has_capability('moodle/badges:createbadge', $coursecontext)) {
             $url = new moodle_url('/badges/newbadge.php', array('type' => BADGE_TYPE_COURSE, 'id' => $course->id));
 
-            $coursenode->get('coursebadges')->add(get_string('newbadge', 'badges'), $url,
-                    navigation_node::TYPE_SETTING, null, 'newbadge');
+            $coursenode->get('coursebadges')->add(get_string('newbadge', 'badges'), $url, navigation_node::TYPE_SETTING, null, 'newbadge');
         }
     }
 }
@@ -963,7 +964,7 @@ function badges_award_handle_manual_criteria_review(stdClass $data) {
  */
 function badges_process_badge_image(badge $badge, $iconfile) {
     global $CFG, $USER;
-    require_once($CFG->libdir. '/gdlib.php');
+    require_once($CFG->libdir . '/gdlib.php');
 
     if (!empty($CFG->gdversion)) {
         process_new_icon($badge->get_context(), 'badges', 'badgeimage', $badge->id, $iconfile, true);
@@ -1023,12 +1024,12 @@ function badges_bake($hash, $badgeid, $userid = 0, $pathhash = false) {
                 // Add assertion URL tExt chunk.
                 $newcontents = $filehandler->add_chunks("tEXt", "openbadges", $assertion->out(false));
                 $fileinfo = array(
-                        'contextid' => $user_context->id,
-                        'component' => 'badges',
-                        'filearea' => 'userbadge',
-                        'itemid' => $badge->id,
-                        'filepath' => '/',
-                        'filename' => $hash . '.png',
+                    'contextid' => $user_context->id,
+                    'component' => 'badges',
+                    'filearea' => 'userbadge',
+                    'itemid' => $badge->id,
+                    'filepath' => '/',
+                    'filename' => $hash . '.png',
                 );
 
                 // Create a file with added contents.
@@ -1122,7 +1123,7 @@ function badges_download($userid) {
     foreach ($records as $issued) {
         $badge = new badge($issued->badgeid);
         // Need to make image name user-readable and unique using filename safe characters.
-        $name =  $badge->name . ' ' . userdate($issued->dateissued, '%d %b %Y') . ' ' . hash('crc32', $badge->id);
+        $name = $badge->name . ' ' . userdate($issued->dateissued, '%d %b %Y') . ' ' . hash('crc32', $badge->id);
         $name = str_replace(' ', '_', $name);
         if ($file = $fs->get_file($context->id, 'badges', 'userbadge', $issued->badgeid, '/', $issued->uniquehash . '.png')) {
             $filelist[$name . '.png'] = $file;
@@ -1130,7 +1131,7 @@ function badges_download($userid) {
     }
 
     // Zip files and sent them to a user.
-    $tempzip = tempnam($CFG->tempdir.'/', 'mybadges');
+    $tempzip = tempnam($CFG->tempdir . '/', 'mybadges');
     $zipper = new zip_packer();
     if ($zipper->archive_to_pathname($filelist, $tempzip)) {
         send_temp_file($tempzip, 'badges.zip');
