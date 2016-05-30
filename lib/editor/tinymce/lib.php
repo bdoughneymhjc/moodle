@@ -1,4 +1,5 @@
 <?php
+
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -22,10 +23,10 @@
  * @copyright  2009 Petr Skoda (http://skodak.org)
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-
 defined('MOODLE_INTERNAL') || die();
 
 class tinymce_texteditor extends texteditor {
+
     /** @var string active version - this is the directory name where to find tinymce code */
     public $version = '3.5.11';
 
@@ -67,6 +68,7 @@ class tinymce_texteditor extends texteditor {
      * Sets up head code if necessary.
      */
     public function head_setup() {
+        
     }
 
     /**
@@ -76,13 +78,13 @@ class tinymce_texteditor extends texteditor {
      * @param array $options
      * @param null $fpoptions
      */
-    public function use_editor($elementid, array $options=null, $fpoptions=null) {
+    public function use_editor($elementid, array $options = null, $fpoptions = null) {
         global $PAGE, $CFG;
         // Note: use full moodle_url instance to prevent standard JS loader, make sure we are using https on profile page if required.
         if ($CFG->debugdeveloper) {
-            $PAGE->requires->js(new moodle_url($CFG->httpswwwroot.'/lib/editor/tinymce/tiny_mce/'.$this->version.'/tiny_mce_src.js'));
+            $PAGE->requires->js(new moodle_url($CFG->httpswwwroot . '/lib/editor/tinymce/tiny_mce/' . $this->version . '/tiny_mce_src.js'));
         } else {
-            $PAGE->requires->js(new moodle_url($CFG->httpswwwroot.'/lib/editor/tinymce/tiny_mce/'.$this->version.'/tiny_mce.js'));
+            $PAGE->requires->js(new moodle_url($CFG->httpswwwroot . '/lib/editor/tinymce/tiny_mce/' . $this->version . '/tiny_mce.js'));
         }
         $PAGE->requires->js_init_call('M.editor_tinymce.init_editor', array($elementid, $this->get_init_params($elementid, $options)), true);
         if ($fpoptions) {
@@ -90,16 +92,16 @@ class tinymce_texteditor extends texteditor {
         }
     }
 
-    protected function get_init_params($elementid, array $options=null) {
+    protected function get_init_params($elementid, array $options = null) {
         global $CFG, $PAGE, $OUTPUT;
 
         //TODO: we need to implement user preferences that affect the editor setup too
 
         $directionality = get_string('thisdirection', 'langconfig');
-        $strtime        = get_string('strftimetime');
-        $strdate        = get_string('strftimedaydate');
-        $lang           = current_language();
-        $contentcss     = $PAGE->theme->editor_css_url()->out(false);
+        $strtime = get_string('strftimetime');
+        $strdate = get_string('strftimedaydate');
+        $lang = current_language();
+        $contentcss = $PAGE->theme->editor_css_url()->out(false);
 
         $context = empty($options['context']) ? context_system::instance() : $options['context'];
 
@@ -122,6 +124,19 @@ class tinymce_texteditor extends texteditor {
             $langrev = get_string_manager()->get_revision();
         }
 
+        $templates[] = array('title' => "WAME Template", 'src' => "/templates/wame.htm", 'description' => "A blank 'WAME' rubric to be used for assessments");
+        $templates[] = array('title' => "AO Template", 'src' => "/templates/aotemplate.htm", 'description' => "A blank template for adding Achievement Objectives");
+        $templates[] = array('title' => "Coast Planning Template", 'src' => "/templates/coastweeklyplanning.htm", 'description' => "A blank weekly planning template for Coast Whanau");
+        $templates[] = array('title' => "Forest Planning Template", 'src' => "/templates/forestweeklyplanning.htm", 'description' => "A blank weekly planning template for Forest Whanau");
+        $templates[] = array('title' => "Water Planning Template", 'src' => "/templates/waterweeklyplanning.htm", 'description' => "A blank weekly planning template for Water Whanau");
+        $templates[] = array('title' => "Mountains Planning Template", 'src' => "/templates/mountainsweeklyplanning.htm", 'description' => "A blank weekly planning template for Mountains Whanau");
+        $templates[] = array('title' => "Coast Science Fair Marking Template", 'src' => "/templates/coastsciencefair.htm", 'description' => "A comment bank template to be used for marking Coast science fair projects");
+        $templates[] = array('title' => "ESOL Foundation Stage Template", 'src' => "/templates/esolfoundation.html", 'description' => "ESOL Foundation Stage template.");
+        $templates[] = array('title' => "ESOL Stage 1 Template", 'src' => "/templates/esolstage1.html", 'description' => "ESOL Stage 1 template.");
+        $templates[] = array('title' => "ESOL Stage 2 Template", 'src' => "/templates/esolstage2.html", 'description' => "ESOL Stage 2 template.");
+        $templates[] = array('title' => "ESOL Stage 3 Template", 'src' => "/templates/esolstage3.html", 'description' => "ESOL Stage 3 template.");
+        $templates[] = array('title' => "ESOL Stage 4 Template", 'src' => "/templates/esolstage4.html", 'description' => "ESOL Stage 4 template.");
+
         $params = array(
             'moodle_config' => $config,
             'mode' => "exact",
@@ -140,9 +155,9 @@ class tinymce_texteditor extends texteditor {
             'remove_script_host' => false,
             'entity_encoding' => "raw",
             'plugins' => 'lists,table,style,layer,advhr,advlink,emotions,inlinepopups,' .
-                'searchreplace,paste,directionality,fullscreen,nonbreaking,contextmenu,' .
-                'insertdatetime,save,iespell,preview,print,noneditable,visualchars,' .
-                'xhtmlxtras,template,pagebreak',
+            'searchreplace,paste,directionality,fullscreen,nonbreaking,contextmenu,' .
+            'insertdatetime,save,iespell,preview,print,noneditable,visualchars,' .
+            'xhtmlxtras,template,pagebreak',
             'gecko_spellcheck' => true,
             'theme_advanced_font_sizes' => "1,2,3,4,5,6,7",
             'theme_advanced_layout_manager' => "SimpleLayout",
@@ -154,6 +169,7 @@ class tinymce_texteditor extends texteditor {
             'min_height' => 30,
             'theme_advanced_toolbar_location' => "top",
             'theme_advanced_statusbar_location' => "bottom",
+            'template_templates' => $templates,
             'language_load' => false, // We load all lang strings directly from Moodle.
             'langrev' => $langrev,
         );
@@ -162,7 +178,7 @@ class tinymce_texteditor extends texteditor {
         if (!empty($config->customtoolbar) and $customtoolbar = self::parse_toolbar_setting($config->customtoolbar)) {
             $i = 1;
             foreach ($customtoolbar as $line) {
-                $params['theme_advanced_buttons'.$i] = $line;
+                $params['theme_advanced_buttons' . $i] = $line;
                 $i++;
             }
         } else {
@@ -174,13 +190,13 @@ class tinymce_texteditor extends texteditor {
             $config->customconfig = trim($config->customconfig);
             $decoded = json_decode($config->customconfig, true);
             if (is_array($decoded)) {
-                foreach ($decoded as $k=>$v) {
+                foreach ($decoded as $k => $v) {
                     $params[$k] = $v;
                 }
             }
         }
 
-        if (!empty($options['legacy']) or !empty($options['noclean']) or !empty($options['trusted'])) {
+        if (!empty($options['legacy']) or ! empty($options['noclean']) or ! empty($options['trusted'])) {
             // now deal somehow with non-standard tags, people scream when we do not make moodle code xtml strict,
             // but they scream even more when we strip all tags that are not strict :-(
             $params['valid_elements'] = 'script[src|type],*[*]'; // for some reason the *[*] does not inlcude javascript src attribute MDL-25836
@@ -228,7 +244,7 @@ class tinymce_texteditor extends texteditor {
             }
             if ($i == 10) {
                 // Maximum is ten lines, merge the rest to the last line.
-                $result[9] = $result[9].','.$line;
+                $result[9] = $result[9] . ',' . $line;
             } else {
                 $result[] = $line;
                 $i++;
