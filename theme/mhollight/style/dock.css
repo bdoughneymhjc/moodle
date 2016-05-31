@@ -1,0 +1,180 @@
+/* Dock
+---------------------------*/
+body.has_dock div#dock {
+    display: inline;
+}
+
+#dock {
+    border-right-color: #433b30;
+    z-index: 1000;
+    display: inline-block;
+}
+
+#dock .dockeditem {
+    background: transparent;
+}
+
+#dock .firstdockitem {
+    margin-top: 0;
+}
+
+#dock .dockeditem .dockedtitle {
+    background: transparent;
+}
+
+#dock .dockeditem .dockedtitle.activeitem {
+}
+
+#dock .dockeditem .dockedtitle h2 {
+    font-weight: lighter;
+}
+
+#dockeditempanel {
+    background: rgb( 255, 255 ,255);
+    background: rgba( 255, 255, 255, 0.9);
+}
+
+#dockeditempanel .dockeditempanel_content {
+    border-color: #433b30;
+    color: black;
+}
+
+#dockeditempanel .dockeditempanel_hd {
+    border-bottom: none;
+    padding: 0;
+    background: transparent;
+    text-align: left;
+}
+
+#dockeditempanel .dockeditempanel_hd h2 {
+    color: #333;
+    text-align: left;
+    font-weight: normal;
+    font-size: 1.25em;
+    padding: 0;
+}
+
+#dockeditempanel .dockeditempanel_hd .commands {
+    float: right;
+}
+
+.buttons_container {
+    height: 20px;
+}
+
+body.has_dock {
+    margin: 0;
+}
+
+.has_dock_top_horizontal #dock {
+    width: 1100px;
+    height: 20px;
+    background: none;
+    border: none;
+    position: fixed;
+    left: 0;
+    right: 0;
+    margin-left: auto;
+    margin-right: auto;
+    top: 145px;
+}
+
+.has_dock_top_horizontal #dock .dockeditem_container {
+    margin: 0;
+    padding: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    background: rgb( 255, 255, 255);
+    background: rgba( 255, 255, 255, 0.9);
+}
+
+.has_dock_top_horizontal #dock .dockeditem {
+    display: inline-block;
+    margin: 0;
+    padding: 0;
+    border-width: 0px 1px 0px 1px;
+    border-style: solid;
+    border-color: rgba( 1, 1, 1, 0.2);
+}
+
+.has_dock_top_horizontal #dock .dockeditem .dockedtitle {
+    background: none;
+    border: none;
+    color: rgb( 0, 60, 60);
+    color: rgba( 0, 60, 60, 1);
+    text-shadow: white 1px 1px 3px;
+    text-transform: uppercase;
+    font-weight: lighter;
+    font-size: 1.2em;
+    font-family: "Century Gothic", "Verdana", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    text-align: center;
+}
+
+.has_dock_top_horizontal #dock .dockeditem .dockedtitle:hover {
+    background: rgb( 0, 50, 50);
+    background: rgba( 0, 50, 50, 1);
+    color: white;
+}
+
+.has_dock_top_horizontal #dock .dockeditem .dockedtitle h2 {
+    margin: 0;
+    padding: 6px;
+}
+
+.has_dock_top_horizontal #dock .dockeditem.firstdockitem .dockedtitle {
+    border-left-width: 1px;
+}
+
+.has_dock_top_horizontal #dock .controls {
+    bottom: auto;
+    right: 10px;
+    top: 0;
+    visibility: hidden;
+}
+.has_dock_top_horizontal #dock #dockeditempanel {
+    position: absolute;
+    top: 20px;
+    overflow: scroll;
+    border: none;
+}
+
+.has_dock_top_horizontal #dock #dockeditempanel .block {
+    border: none;
+}
+
+#dockeditempanel .dockeditempanel_bd {
+    /* background: rgb( 255, 255, 255);
+    background: rgba( 255, 255, 255, 0.9);*/
+}
+
+.block-region {
+    width: auto;
+    height: auto;
+    min-height: 0;
+}
+
+#mce_fullscreen_container {
+    position: relative;
+    z-index: 10000;
+}
+
+.moodle-dialogue-base .moodle-dialogue {
+    z-index: 10000;
+}
+
+.block_js_expansion .block_tree {
+    overflow-x: scroll;
+}
+
+.block_js_expansion.mouseover .content {
+    width: 100%;
+    z-index: 10000;
+    position: relative;
+}
+
+.block_js_expansion.mouseover .content .block_tree {
+    width: 100%;
+    background-color: #FAFAFA;
+    padding-bottom: 0px;
+}
