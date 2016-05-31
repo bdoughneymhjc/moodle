@@ -1,4 +1,5 @@
 <?php
+
 // This file is part of Moodle - http://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
@@ -20,22 +21,21 @@
  * @package    core_block
  * @license    http://www.gnu.org/copyleft/gpl.html GNU Public License
  */
-
 /// Constants
 
 /**
  * Block type of list. Contents of block should be set as an associative array in the content object as items ($this->content->items). Optionally include footer text in $this->content->footer.
  */
-define('BLOCK_TYPE_LIST',    1);
+define('BLOCK_TYPE_LIST', 1);
 
 /**
  * Block type of text. Contents of block should be set to standard html text in the content object as items ($this->content->text). Optionally include footer text in $this->content->footer.
  */
-define('BLOCK_TYPE_TEXT',    2);
+define('BLOCK_TYPE_TEXT', 2);
 /**
  * Block type of tree. $this->content->items is a list of tree_item objects and $this->content->footer is a string.
  */
-define('BLOCK_TYPE_TREE',    3);
+define('BLOCK_TYPE_TREE', 3);
 
 /**
  * Class for describing a moodle block, all Moodle blocks derive from this class
@@ -55,56 +55,55 @@ class block_base {
      * The title of the block to be displayed in the block title area.
      * @var string $title
      */
-    var $title         = NULL;
+    var $title = NULL;
 
     /**
      * The name of the block to be displayed in the block title area if the title is empty.
      * @var string arialabel
      */
-    var $arialabel         = NULL;
+    var $arialabel = NULL;
 
     /**
      * The type of content that this block creates. Currently support options - BLOCK_TYPE_LIST, BLOCK_TYPE_TEXT
      * @var int $content_type
      */
-    var $content_type  = BLOCK_TYPE_TEXT;
+    var $content_type = BLOCK_TYPE_TEXT;
 
     /**
      * An object to contain the information to be displayed in the block.
      * @var stdObject $content
      */
-    var $content       = NULL;
+    var $content = NULL;
 
     /**
      * The initialized instance of this block object.
      * @var block $instance
      */
-    var $instance      = NULL;
+    var $instance = NULL;
 
     /**
      * The page that this block is appearing on.
      * @var moodle_page
      */
-    public $page       = NULL;
+    public $page = NULL;
 
     /**
      * This blocks's context.
      * @var stdClass
      */
-    public $context    = NULL;
+    public $context = NULL;
 
     /**
      * An object containing the instance configuration information for the current instance of this block.
      * @var stdObject $config
      */
-    var $config        = NULL;
+    var $config = NULL;
 
     /**
      * How often the cronjob should run, 0 if not at all.
      * @var int $cron
      */
-
-    var $cron          = NULL;
+    var $cron = NULL;
 
 /// Class Functions
 
@@ -121,6 +120,7 @@ class block_base {
      * the database tables are deleted. (Called once per block, not per instance!)
      */
     function before_delete() {
+        
     }
 
     /**
@@ -185,7 +185,7 @@ class block_base {
      * @return boolean
      */
     function is_empty() {
-        if ( !has_capability('moodle/block:view', $this->context) ) {
+        if (!has_capability('moodle/block:view', $this->context)) {
             return true;
         }
 
@@ -253,9 +253,7 @@ class block_base {
             }
         }
 
-        if (empty($CFG->allowuserblockhiding)
-                || (empty($bc->content) && empty($bc->footer))
-                || !$this->instance_can_be_collapsed()) {
+        if (empty($CFG->allowuserblockhiding) || (empty($bc->content) && empty($bc->footer)) || !$this->instance_can_be_collapsed()) {
             $bc->collapsible = block_contents::NOT_HIDEABLE;
         } else if (get_user_preferences('block' . $bc->blockinstanceid . 'hidden', false)) {
             $bc->collapsible = block_contents::HIDDEN;
@@ -300,7 +298,6 @@ class block_base {
      *
      * @return boolean
      */
-
     function _self_test() {
         // Tests if this block has been implemented correctly.
         // Also, $errors isn't used right now
@@ -316,10 +313,10 @@ class block_base {
             $correct = false;
         }
         //following selftest was not working when roles&capabilities were used from block
-/*        if ($this->get_content() === NULL) {
-            $errors[] = 'content_not_set';
-            $correct = false;
-        }*/
+        /*        if ($this->get_content() === NULL) {
+          $errors[] = 'content_not_set';
+          $correct = false;
+          } */
         $formats = $this->applicable_formats();
         if (empty($formats) || array_sum($formats) === 0) {
             $errors[] = 'no_formats';
@@ -365,7 +362,6 @@ class block_base {
         return array('all' => true, 'mod' => false, 'tag' => false);
     }
 
-
     /**
      * Default return is false - header will be shown
      * @return boolean
@@ -396,13 +392,13 @@ class block_base {
     function html_attributes() {
         $attributes = array(
             'id' => 'inst' . $this->instance->id,
-            'class' => 'block_' . $this->name(). '  block',
+            'class' => 'block_' . $this->name() . '  block',
             'role' => $this->get_aria_role()
         );
         if ($this->hide_header()) {
             $attributes['class'] .= ' no-header';
         }
-        if ($this->instance_can_be_docked() && get_user_preferences('docked_block_instance_'.$this->instance->id, 0)) {
+        if ($this->instance_can_be_docked() && get_user_preferences('docked_block_instance_' . $this->instance->id, 1)) {
             $attributes['class'] .= ' dock_on_load';
         }
         return $attributes;
@@ -432,7 +428,7 @@ class block_base {
      */
     function get_required_javascript() {
         if ($this->instance_can_be_docked() && !$this->hide_header()) {
-            user_preference_allow_ajax_update('docked_block_instance_'.$this->instance->id, PARAM_INT);
+            user_preference_allow_ajax_update('docked_block_instance_' . $this->instance->id, PARAM_INT);
         }
     }
 
@@ -474,8 +470,7 @@ class block_base {
      */
     function instance_config_save($data, $nolongerused = false) {
         global $DB;
-        $DB->set_field('block_instances', 'configdata', base64_encode(serialize($data)),
-                array('id' => $this->instance->id));
+        $DB->set_field('block_instances', 'configdata', base64_encode(serialize($data)), array('id' => $this->instance->id));
     }
 
     /**
@@ -525,10 +520,9 @@ class block_base {
         }
 
         // The blocks in My Moodle are a special case.  We want them to inherit from the user context.
-        if (!empty($USER->id)
-            && $this->instance->parentcontextid == $this->page->context->id   // Block belongs to this page
-            && $this->page->context->contextlevel == CONTEXT_USER             // Page belongs to a user
-            && $this->page->context->instanceid == $USER->id) {               // Page belongs to this user
+        if (!empty($USER->id) && $this->instance->parentcontextid == $this->page->context->id   // Block belongs to this page
+                && $this->page->context->contextlevel == CONTEXT_USER             // Page belongs to a user
+                && $this->page->context->instanceid == $USER->id) {               // Page belongs to this user
             return has_capability('moodle/my:manageblocks', $this->page->context);
         }
 
@@ -548,30 +542,25 @@ class block_base {
         global $USER;
 
         // The blocks in My Moodle are a special case and use a different capability.
-        if (!empty($USER->id)
-            && $page->context->contextlevel == CONTEXT_USER // Page belongs to a user
-            && $page->context->instanceid == $USER->id // Page belongs to this user
-            && $page->pagetype == 'my-index') { // Ensure we are on the My Moodle page
-
+        if (!empty($USER->id) && $page->context->contextlevel == CONTEXT_USER // Page belongs to a user
+                && $page->context->instanceid == $USER->id // Page belongs to this user
+                && $page->pagetype == 'my-index') { // Ensure we are on the My Moodle page
             // If the block cannot be displayed on /my it is ok if the myaddinstance capability is not defined.
             $formats = $this->applicable_formats();
             // Is 'my' explicitly forbidden?
             // If 'all' has not been allowed, has 'my' been explicitly allowed?
-            if ((isset($formats['my']) && $formats['my'] == false)
-                || (empty($formats['all']) && empty($formats['my']))) {
+            if ((isset($formats['my']) && $formats['my'] == false) || (empty($formats['all']) && empty($formats['my']))) {
 
                 // Block cannot be added to /my regardless of capabilities.
                 return false;
             } else {
                 $capability = 'block/' . $this->name() . ':myaddinstance';
-                return $this->has_add_block_capability($page, $capability)
-                       && has_capability('moodle/my:manageblocks', $page->context);
+                return $this->has_add_block_capability($page, $capability) && has_capability('moodle/my:manageblocks', $page->context);
             }
         }
 
         $capability = 'block/' . $this->name() . ':addinstance';
-        if ($this->has_add_block_capability($page, $capability)
-                && has_capability('moodle/block:edit', $page->context)) {
+        if ($this->has_add_block_capability($page, $capability) && has_capability('moodle/block:edit', $page->context)) {
             return true;
         }
 
@@ -591,8 +580,8 @@ class block_base {
             // Debug warning that the capability does not exist, but no more than once per page.
             static $warned = array();
             if (!isset($warned[$this->name()])) {
-                debugging('The block ' .$this->name() . ' does not define the standard capability ' .
-                        $capability , DEBUG_DEVELOPER);
+                debugging('The block ' . $this->name() . ' does not define the standard capability ' .
+                        $capability, DEBUG_DEVELOPER);
                 $warned[$this->name()] = 1;
             }
             // If the capability does not exist, the block can always be added.
@@ -646,15 +635,19 @@ class block_base {
 EOD;
         return $ret;
     }
+
     public static function comment_permissions($options) {
-        return array('view'=>true, 'post'=>true);
+        return array('view' => true, 'post' => true);
     }
+
     public static function comment_url($options) {
         return null;
     }
+
     public static function comment_display($comments, $options) {
         return $comments;
     }
+
     public static function comment_add(&$comments, $options) {
         return true;
     }
@@ -681,6 +674,7 @@ EOD;
     public function get_aria_role() {
         return 'complementary';
     }
+
 }
 
 /**
@@ -692,12 +686,12 @@ EOD;
  * @author Jon Papaioannou
  * @package core_block
  */
-
 class block_list extends block_base {
-    var $content_type  = BLOCK_TYPE_LIST;
+
+    var $content_type = BLOCK_TYPE_LIST;
 
     function is_empty() {
-        if ( !has_capability('moodle/block:view', $this->context) ) {
+        if (!has_capability('moodle/block:view', $this->context)) {
             return true;
         }
 
@@ -760,7 +754,7 @@ class block_tree extends block_list {
         // based of code in admin_tree
         global $PAGE; // TODO change this when there is a proper way for blocks to get stuff into head.
         static $eventattached;
-        if ($eventattached===null) {
+        if ($eventattached === null) {
             $eventattached = true;
         }
         if (!$this->content) {
@@ -769,10 +763,11 @@ class block_tree extends block_list {
         }
         $this->get_required_javascript();
         $this->get_content();
-        $content = $output->tree_block_contents($this->content->items,array('class'=>'block_tree list'));
+        $content = $output->tree_block_contents($this->content->items, array('class' => 'block_tree list'));
         if (isset($this->id) && !is_numeric($this->id)) {
             $content = $output->box($content, 'block_tree_box', $this->id);
         }
         return $content;
     }
+
 }
