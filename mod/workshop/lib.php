@@ -30,6 +30,11 @@ defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->dirroot . '/calendar/lib.php');
 
+define('WORKSHOP_EVENT_TYPE_SUBMISSION_OPEN',   'opensubmission');
+define('WORKSHOP_EVENT_TYPE_SUBMISSION_CLOSE',  'closesubmission');
+define('WORKSHOP_EVENT_TYPE_ASSESSMENT_OPEN',   'openassessment');
+define('WORKSHOP_EVENT_TYPE_ASSESSMENT_CLOSE',  'closeassessment');
+
 ////////////////////////////////////////////////////////////////////////////////
 // Moodle core API                                                            //
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,7 +74,7 @@ function workshop_supports($feature) {
  */
 function workshop_add_instance(stdclass $workshop) {
     global $CFG, $DB;
-    require_once(dirname(__FILE__) . '/locallib.php');
+    require_once(__DIR__ . '/locallib.php');
 
     $workshop->phase                 = workshop::PHASE_SETUP;
     $workshop->timecreated           = time();
@@ -80,6 +85,14 @@ function workshop_add_instance(stdclass $workshop) {
     $workshop->latesubmissions       = (int)!empty($workshop->latesubmissions);
     $workshop->phaseswitchassessment = (int)!empty($workshop->phaseswitchassessment);
     $workshop->evaluation            = 'best';
+
+    if (isset($workshop->gradinggradepass)) {
+        $workshop->gradinggradepass = (float)unformat_float($workshop->gradinggradepass);
+    }
+
+    if (isset($workshop->submissiongradepass)) {
+        $workshop->submissiongradepass = (float)unformat_float($workshop->submissiongradepass);
+    }
 
     if (isset($workshop->submissionfiletypes)) {
         $workshop->submissionfiletypes = workshop::clean_file_extensions($workshop->submissionfiletypes);
@@ -139,7 +152,7 @@ function workshop_add_instance(stdclass $workshop) {
  */
 function workshop_update_instance(stdclass $workshop) {
     global $CFG, $DB;
-    require_once(dirname(__FILE__) . '/locallib.php');
+    require_once(__DIR__ . '/locallib.php');
 
     $workshop->timemodified          = time();
     $workshop->id                    = $workshop->instance;
@@ -148,6 +161,14 @@ function workshop_update_instance(stdclass $workshop) {
     $workshop->useselfassessment     = (int)!empty($workshop->useselfassessment);
     $workshop->latesubmissions       = (int)!empty($workshop->latesubmissions);
     $workshop->phaseswitchassessment = (int)!empty($workshop->phaseswitchassessment);
+
+    if (isset($workshop->gradinggradepass)) {
+        $workshop->gradinggradepass = (float)unformat_float($workshop->gradinggradepass);
+    }
+
+    if (isset($workshop->submissiongradepass)) {
+        $workshop->submissiongradepass = (float)unformat_float($workshop->submissiongradepass);
+    }
 
     if (isset($workshop->submissionfiletypes)) {
         $workshop->submissionfiletypes = workshop::clean_file_extensions($workshop->submissionfiletypes);
@@ -264,6 +285,40 @@ function workshop_delete_instance($id) {
 }
 
 /**
+ * This standard function will check all instances of this module
+ * and make sure there are up-to-date events created for each of them.
+ * If courseid = 0, then every workshop event in the site is checked, else
+ * only workshop events belonging to the course specified are checked.
+ *
+ * @param  integer $courseid The Course ID.
+ * @return bool Returns true if the calendar events were successfully updated.
+ */
+function workshop_refresh_events($courseid = 0) {
+    global $DB;
+
+    if ($courseid) {
+        // Make sure that the course id is numeric.
+        if (!is_numeric($courseid)) {
+            return false;
+        }
+        if (!$workshops = $DB->get_records('workshop', array('course' => $courseid))) {
+            return false;
+        }
+    } else {
+        if (!$workshops = $DB->get_records('workshop')) {
+            return false;
+        }
+    }
+    foreach ($workshops as $workshop) {
+        if (!$cm = get_coursemodule_from_instance('workshop', $workshop->id, $courseid, false)) {
+            continue;
+        }
+        workshop_calendar_update($workshop, $cm->id);
+    }
+    return true;
+}
+
+/**
  * List the actions that correspond to a view of this module.
  * This is used by the participation report.
  *
@@ -350,7 +405,7 @@ function workshop_user_outline($course, $user, $mod, $workshop) {
  */
 function workshop_user_complete($course, $user, $mod, $workshop) {
     global $CFG, $DB, $OUTPUT;
-    require_once(dirname(__FILE__).'/locallib.php');
+    require_once(__DIR__.'/locallib.php');
     require_once($CFG->libdir.'/gradelib.php');
 
     $workshop   = new workshop($workshop, $mod, $course);
@@ -878,7 +933,7 @@ function workshop_print_recent_mod_activity($activity, $courseid, $detail, $modn
             echo html_writer::start_tag('h4', array('class'=>'workshop'));
             $url = new moodle_url('/mod/workshop/view.php', array('id'=>$activity->cmid));
             $name = s($activity->name);
-            echo html_writer::empty_tag('img', array('src'=>$OUTPUT->pix_url('icon', $activity->type), 'class'=>'icon', 'alt'=>$name));
+            echo $OUTPUT->image_icon('icon', $name, $activity->type);
             echo ' ' . $modnames[$activity->type];
             echo html_writer::link($url, $name, array('class'=>'name', 'style'=>'margin-left: 5px'));
             echo html_writer::end_tag('h4');
@@ -915,7 +970,7 @@ function workshop_print_recent_mod_activity($activity, $courseid, $detail, $modn
             echo html_writer::start_tag('h4', array('class'=>'workshop'));
             $url = new moodle_url('/mod/workshop/view.php', array('id'=>$activity->cmid));
             $name = s($activity->name);
-            echo html_writer::empty_tag('img', array('src'=>$OUTPUT->pix_url('icon', $activity->type), 'class'=>'icon', 'alt'=>$name));
+            echo $OUTPUT->image_icon('icon', $name, $activity->type);
             echo ' ' . $modnames[$activity->type];
             echo html_writer::link($url, $name, array('class'=>'name', 'style'=>'margin-left: 5px'));
             echo html_writer::end_tag('h4');
@@ -1268,8 +1323,8 @@ function workshop_pluginfile($course, $cm, $context, $filearea, array $args, $fo
 
     require_login($course, true, $cm);
 
-    if ($filearea === 'instructauthors') {
-        array_shift($args); // itemid is ignored here
+    if ($filearea === 'instructauthors' or $filearea === 'instructreviewers' or $filearea === 'conclusion') {
+        // The $args are supposed to contain just the path, not the item id.
         $relativepath = implode('/', $args);
         $fullpath = "/$context->id/mod_workshop/$filearea/0/$relativepath";
 
@@ -1277,34 +1332,6 @@ function workshop_pluginfile($course, $cm, $context, $filearea, array $args, $fo
         if (!$file = $fs->get_file_by_hash(sha1($fullpath)) or $file->is_directory()) {
             send_file_not_found();
         }
-
-        // finally send the file
-        send_stored_file($file, null, 0, $forcedownload, $options);
-
-    } else if ($filearea === 'instructreviewers') {
-        array_shift($args); // itemid is ignored here
-        $relativepath = implode('/', $args);
-        $fullpath = "/$context->id/mod_workshop/$filearea/0/$relativepath";
-
-        $fs = get_file_storage();
-        if (!$file = $fs->get_file_by_hash(sha1($fullpath)) or $file->is_directory()) {
-            send_file_not_found();
-        }
-
-        // finally send the file
-        send_stored_file($file, null, 0, $forcedownload, $options);
-
-    } else if ($filearea === 'conclusion') {
-        array_shift($args); // itemid is ignored here
-        $relativepath = implode('/', $args);
-        $fullpath = "/$context->id/mod_workshop/$filearea/0/$relativepath";
-
-        $fs = get_file_storage();
-        if (!$file = $fs->get_file_by_hash(sha1($fullpath)) or $file->is_directory()) {
-            send_file_not_found();
-        }
-
-        // finally send the file
         send_stored_file($file, null, 0, $forcedownload, $options);
 
     } else if ($filearea === 'submission_content' or $filearea === 'submission_attachment') {
@@ -1676,7 +1703,6 @@ function workshop_calendar_update(stdClass $workshop, $cmid) {
     $base->groupid      = 0;
     $base->userid       = 0;
     $base->modulename   = 'workshop';
-    $base->eventtype    = 'pluginname';
     $base->instance     = $workshop->id;
     $base->visible      = instance_is_visible('workshop', $workshop);
     $base->timeduration = 0;
@@ -1684,7 +1710,10 @@ function workshop_calendar_update(stdClass $workshop, $cmid) {
     if ($workshop->submissionstart) {
         $event = clone($base);
         $event->name = get_string('submissionstartevent', 'mod_workshop', $workshop->name);
+        $event->eventtype = WORKSHOP_EVENT_TYPE_SUBMISSION_OPEN;
+        $event->type = empty($workshop->submissionend) ? CALENDAR_EVENT_TYPE_ACTION : CALENDAR_EVENT_TYPE_STANDARD;
         $event->timestart = $workshop->submissionstart;
+        $event->timesort  = $workshop->submissionstart;
         if ($reusedevent = array_shift($currentevents)) {
             $event->id = $reusedevent->id;
         } else {
@@ -1699,7 +1728,10 @@ function workshop_calendar_update(stdClass $workshop, $cmid) {
     if ($workshop->submissionend) {
         $event = clone($base);
         $event->name = get_string('submissionendevent', 'mod_workshop', $workshop->name);
+        $event->eventtype = WORKSHOP_EVENT_TYPE_SUBMISSION_CLOSE;
+        $event->type      = CALENDAR_EVENT_TYPE_ACTION;
         $event->timestart = $workshop->submissionend;
+        $event->timesort  = $workshop->submissionend;
         if ($reusedevent = array_shift($currentevents)) {
             $event->id = $reusedevent->id;
         } else {
@@ -1714,7 +1746,10 @@ function workshop_calendar_update(stdClass $workshop, $cmid) {
     if ($workshop->assessmentstart) {
         $event = clone($base);
         $event->name = get_string('assessmentstartevent', 'mod_workshop', $workshop->name);
+        $event->eventtype = WORKSHOP_EVENT_TYPE_ASSESSMENT_OPEN;
+        $event->type      = empty($workshop->assessmentend) ? CALENDAR_EVENT_TYPE_ACTION : CALENDAR_EVENT_TYPE_STANDARD;
         $event->timestart = $workshop->assessmentstart;
+        $event->timesort  = $workshop->assessmentstart;
         if ($reusedevent = array_shift($currentevents)) {
             $event->id = $reusedevent->id;
         } else {
@@ -1729,7 +1764,10 @@ function workshop_calendar_update(stdClass $workshop, $cmid) {
     if ($workshop->assessmentend) {
         $event = clone($base);
         $event->name = get_string('assessmentendevent', 'mod_workshop', $workshop->name);
+        $event->eventtype = WORKSHOP_EVENT_TYPE_ASSESSMENT_CLOSE;
+        $event->type      = CALENDAR_EVENT_TYPE_ACTION;
         $event->timestart = $workshop->assessmentend;
+        $event->timesort  = $workshop->assessmentend;
         if ($reusedevent = array_shift($currentevents)) {
             $event->id = $reusedevent->id;
         } else {
@@ -1746,6 +1784,29 @@ function workshop_calendar_update(stdClass $workshop, $cmid) {
         $oldevent = calendar_event::load($oldevent);
         $oldevent->delete();
     }
+}
+
+/**
+ * This function receives a calendar event and returns the action associated with it, or null if there is none.
+ *
+ * This is used by block_myoverview in order to display the event appropriately. If null is returned then the event
+ * is not displayed on the block.
+ *
+ * @param calendar_event $event
+ * @param \core_calendar\action_factory $factory
+ * @return \core_calendar\local\event\entities\action_interface|null
+ */
+function mod_workshop_core_calendar_provide_event_action(calendar_event $event,
+                                                         \core_calendar\action_factory $factory) {
+
+    $cm = get_fast_modinfo($event->courseid)->instances['workshop'][$event->instance];
+
+    return $factory->create_instance(
+        get_string('viewworkshopsummary', 'workshop'),
+        new \moodle_url('/mod/workshop/view.php', array('id' => $cm->id)),
+        1,
+        true
+    );
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1823,4 +1884,16 @@ function workshop_reset_userdata(stdClass $data) {
     }
 
     return $status;
+}
+
+/**
+ * Get icon mapping for font-awesome.
+ */
+function mod_workshop_get_fontawesome_icon_map() {
+    return [
+        'mod_workshop:userplan/task-info' => 'fa-info text-info',
+        'mod_workshop:userplan/task-todo' => 'fa-square-o',
+        'mod_workshop:userplan/task-done' => 'fa-check text-success',
+        'mod_workshop:userplan/task-fail' => 'fa-remove text-danger',
+    ];
 }

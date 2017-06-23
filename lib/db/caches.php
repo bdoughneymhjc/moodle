@@ -223,9 +223,20 @@ $definitions = array(
     'completion' => array(
         'mode' => cache_store::MODE_APPLICATION,
         'simplekeys' => true,
+        'simpledata' => true,
         'ttl' => 3600,
         'staticacceleration' => true,
         'staticaccelerationsize' => 2, // Should be current course and site course.
+    ),
+
+    // Used to cache course completion status.
+    'coursecompletion' => array(
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+        'simpledata' => true,
+        'ttl' => 3600,
+        'staticacceleration' => true,
+        'staticaccelerationsize' => 30, // Will be users list of current courses in nav.
     ),
 
     // A simple cache that stores whether a user can expand a course in the navigation.
@@ -290,5 +301,39 @@ $definitions = array(
         'invalidationevents' => array(
             'resettagindexbuilder',
         ),
+    ),
+
+    // Caches message processors.
+    'message_processors_enabled' => array(
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+        'simpledata' => true,
+        'staticacceleration' => true,
+        'staticaccelerationsize' => 3
+    ),
+
+    // Caches the time of the last message between two users.
+    'message_time_last_message_between_users' => array(
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true, // The id of the sender and recipient is used.
+        'simplevalues' => true,
+        'datasource' => '\core_message\time_last_message_between_users',
+    ),
+
+    // Caches font awesome icons.
+    'fontawesomeiconmapping' => array(
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+        'simpledata' => true,
+        'staticacceleration' => true,
+        'staticaccelerationsize' => 1
+    ),
+
+    // Caches processed CSS.
+    'postprocessedcss' => array(
+        'mode' => cache_store::MODE_APPLICATION,
+        'simplekeys' => true,
+        'simpledata' => true,
+        'staticacceleration' => false,
     ),
 );

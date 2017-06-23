@@ -96,10 +96,8 @@ function s($var) {
         return '0';
     }
 
-    // When we move to PHP 5.4 as a minimum version, change ENT_QUOTES on the
-    // next line to ENT_QUOTES | ENT_HTML5 | ENT_SUBSTITUTE, and remove the
-    // 'UTF-8' argument. Both bring a speed-increase.
-    return preg_replace('/&amp;#(\d+|x[0-9a-f]+);/i', '&#$1;', htmlspecialchars($var, ENT_QUOTES, 'UTF-8'));
+    return preg_replace('/&amp;#(\d+|x[0-9a-f]+);/i', '&#$1;',
+            htmlspecialchars($var, ENT_QUOTES | ENT_HTML401 | ENT_SUBSTITUTE));
 }
 
 /**
@@ -760,7 +758,6 @@ class moodle_url {
         if ($forcedownload) {
             $params['forcedownload'] = 1;
         }
-        $path = rtrim($path, '/');
         $url = new moodle_url($urlbase, $params);
         $url->set_slashargument($path);
         return $url;
@@ -1091,12 +1088,12 @@ function page_get_doc_link_path(moodle_page $page) {
  */
 function validate_email($address) {
 
-    return (preg_match('#^[-!\#$%&\'*+\\/0-9=?A-Z^_`a-z{|}~]+'.
+    return (bool)preg_match('#^[-!\#$%&\'*+\\/0-9=?A-Z^_`a-z{|}~]+'.
                  '(\.[-!\#$%&\'*+\\/0-9=?A-Z^_`a-z{|}~]+)*'.
                   '@'.
                   '[-!\#$%&\'*+\\/0-9=?A-Z^_`a-z{|}~]+\.'.
                   '[-!\#$%&\'*+\\./0-9=?A-Z^_`a-z{|}~]+$#',
-                  $address));
+                  $address);
 }
 
 /**
@@ -1109,7 +1106,22 @@ function validate_email($address) {
 function get_file_argument() {
     global $SCRIPT;
 
-    $relativepath = optional_param('file', false, PARAM_PATH);
+    $relativepath = false;
+    $hasforcedslashargs = false;
+
+    if (isset($_SERVER['REQUEST_URI']) && !empty($_SERVER['REQUEST_URI'])) {
+        // Checks whether $_SERVER['REQUEST_URI'] contains '/pluginfile.php/'
+        // instead of '/pluginfile.php?', when serving a file from e.g. mod_imscp or mod_scorm.
+        if ((strpos($_SERVER['REQUEST_URI'], '/pluginfile.php/') !== false)
+                && isset($_SERVER['PATH_INFO']) && !empty($_SERVER['PATH_INFO'])) {
+            // Exclude edge cases like '/pluginfile.php/?file='.
+            $args = explode('/', ltrim($_SERVER['PATH_INFO'], '/'));
+            $hasforcedslashargs = (count($args) > 2); // Always at least: context, component and filearea.
+        }
+    }
+    if (!$hasforcedslashargs) {
+        $relativepath = optional_param('file', false, PARAM_PATH);
+    }
 
     if ($relativepath !== false and $relativepath !== '') {
         return $relativepath;
@@ -1175,6 +1187,7 @@ function format_text_menu() {
  *                      with the class no-overflow before being returned. Default false.
  *      allowid     :   If true then id attributes will not be removed, even when
  *                      using htmlpurifier. Default false.
+ *      blanktarget :   If true all <a> tags will have target="_blank" added unless target is explicitly specified.
  * </pre>
  *
  * @staticvar array $croncache
@@ -1222,6 +1235,7 @@ function format_text($text, $format = FORMAT_MOODLE, $options = null, $courseidd
     if (!isset($options['overflowdiv'])) {
         $options['overflowdiv'] = false;
     }
+    $options['blanktarget'] = !empty($options['blanktarget']);
 
     // Calculate best context.
     if (empty($CFG->version) or $CFG->version < 2013051400 or during_initial_install()) {
@@ -1318,6 +1332,28 @@ function format_text($text, $format = FORMAT_MOODLE, $options = null, $courseidd
         $text = html_writer::tag('div', $text, array('class' => 'no-overflow'));
     }
 
+    if ($options['blanktarget']) {
+        $domdoc = new DOMDocument();
+        libxml_use_internal_errors(true);
+        $domdoc->loadHTML('<?xml version="1.0" encoding="UTF-8" ?>' . $text);
+        libxml_clear_errors();
+        foreach ($domdoc->getElementsByTagName('a') as $link) {
+            if ($link->hasAttribute('target') && strpos($link->getAttribute('target'), '_blank') === false) {
+                continue;
+            }
+            $link->setAttribute('target', '_blank');
+            if (strpos($link->getAttribute('rel'), 'noreferrer') === false) {
+                $link->setAttribute('rel', trim($link->getAttribute('rel') . ' noreferrer'));
+            }
+        }
+
+        // This regex is nasty and I don't like it. The correct way to solve this is by loading the HTML like so:
+        // $domdoc->loadHTML($text, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD); however it seems like the libxml
+        // version that travis uses doesn't work properly and ends up leaving <html><body>, so I'm forced to use
+        // this regex to remove those tags.
+        $text = trim(preg_replace('~<(?:!DOCTYPE|/?(?:html|body))[^>]*>\s*~i', '', $domdoc->saveHTML($domdoc->documentElement)));
+    }
+
     return $text;
 }
 
@@ -1404,13 +1440,15 @@ function format_string($string, $striplinks = true, $options = null) {
         $options['filter'] = true;
     }
 
+    $options['escape'] = !isset($options['escape']) || $options['escape'];
+
     if (!$options['context']) {
         // We did not find any context? weird.
         return $string = strip_tags($string);
     }
 
     // Calculate md5.
-    $md5 = md5($string.'<+>'.$striplinks.'<+>'.$options['context']->id.'<+>'.current_language());
+    $md5 = md5($string.'<+>'.$striplinks.'<+>'.$options['context']->id.'<+>'.$options['escape'].'<+>'.current_language());
 
     // Fetch from cache if possible.
     if (isset($strcache[$md5])) {
@@ -1419,7 +1457,7 @@ function format_string($string, $striplinks = true, $options = null) {
 
     // First replace all ampersands not followed by html entity code
     // Regular expression moved to its own method for easier unit testing.
-    $string = replace_ampersands_not_followed_by_entity($string);
+    $string = $options['escape'] ? replace_ampersands_not_followed_by_entity($string) : $string;
 
     if (!empty($CFG->filterall) && $options['filter']) {
         $filtermanager = filter_manager::instance();
@@ -1429,8 +1467,11 @@ function format_string($string, $striplinks = true, $options = null) {
 
     // If the site requires it, strip ALL tags from this string.
     if (!empty($CFG->formatstringstriptags)) {
-        $string = str_replace(array('<', '>'), array('&lt;', '&gt;'), strip_tags($string));
-
+        if ($options['escape']) {
+            $string = str_replace(array('<', '>'), array('&lt;', '&gt;'), strip_tags($string));
+        } else {
+            $string = strip_tags($string);
+        }
     } else {
         // Otherwise strip just links if that is required (default).
         if ($striplinks) {
@@ -1557,6 +1598,10 @@ function strip_pluginfile_content($source) {
  * @return string text without legacy TRUSTTEXT marker
  */
 function trusttext_strip($text) {
+    if (!is_string($text)) {
+        // This avoids the potential for an endless loop below.
+        throw new coding_exception('trusttext_strip parameter must be a string');
+    }
     while (true) { // Removing nested TRUSTTEXT.
         $orig = $text;
         $text = str_replace('#####TRUSTTEXT#####', '', $text);
@@ -1754,7 +1799,7 @@ function purify_html($text, $options = array()) {
         $config = HTMLPurifier_Config::createDefault();
 
         $config->set('HTML.DefinitionID', 'moodlehtml');
-        $config->set('HTML.DefinitionRev', 4);
+        $config->set('HTML.DefinitionRev', 6);
         $config->set('Cache.SerializerPath', $cachedir);
         $config->set('Cache.SerializerPermissions', $CFG->directorypermissions);
         $config->set('Core.NormalizeNewlines', false);
@@ -1794,11 +1839,47 @@ function purify_html($text, $options = array()) {
             $def->addElement('lang', 'Block', 'Flow', array(), array('lang'=>'CDATA')); // Original multilang style - only our hacked lang attribute.
             $def->addAttribute('span', 'xxxlang', 'CDATA');                             // Current very problematic multilang.
 
+            // Media elements.
+            // https://html.spec.whatwg.org/#the-video-element
+            $def->addElement('video', 'Block', 'Optional: #PCDATA | Flow | source | track', 'Common', [
+                'src' => 'URI',
+                'crossorigin' => 'Enum#anonymous,use-credentials',
+                'poster' => 'URI',
+                'preload' => 'Enum#auto,metadata,none',
+                'autoplay' => 'Bool',
+                'playsinline' => 'Bool',
+                'loop' => 'Bool',
+                'muted' => 'Bool',
+                'controls' => 'Bool',
+                'width' => 'Length',
+                'height' => 'Length',
+            ]);
+            // https://html.spec.whatwg.org/#the-audio-element
+            $def->addElement('audio', 'Block', 'Optional: #PCDATA | Flow | source | track', 'Common', [
+                'src' => 'URI',
+                'crossorigin' => 'Enum#anonymous,use-credentials',
+                'preload' => 'Enum#auto,metadata,none',
+                'autoplay' => 'Bool',
+                'loop' => 'Bool',
+                'muted' => 'Bool',
+                'controls' => 'Bool'
+            ]);
+            // https://html.spec.whatwg.org/#the-source-element
+            $def->addElement('source', false, 'Empty', null, [
+                'src' => 'URI',
+                'type' => 'Text'
+            ]);
+            // https://html.spec.whatwg.org/#the-track-element
+            $def->addElement('track', false, 'Empty', null, [
+                'src' => 'URI',
+                'kind' => 'Enum#subtitles,captions,descriptions,chapters,metadata',
+                'srclang' => 'Text',
+                'label' => 'Text',
+                'default' => 'Bool',
+            ]);
+
             // Use the built-in Ruby module to add annotation support.
             $def->manager->addModule(new HTMLPurifier_HTMLModule_Ruby());
-
-            // Use the custom Noreferrer module.
-            $def->manager->addModule(new HTMLPurifier_HTMLModule_Noreferrer());
         }
 
         $purifier = new HTMLPurifier($config);
@@ -2493,7 +2574,7 @@ function navmenulist($course, $sections, $modinfo, $strsection, $strjumpto, $wid
         $class = 'activity '.$mod->modname;
         $class .= ($cmid == $mod->id) ? ' selected' : '';
         $menu[] = '<li class="'.$class.'">'.
-                  '<img src="'.$OUTPUT->pix_url('icon', $mod->modname) . '" alt="" />'.
+                  $OUTPUT->image_icon('icon', '', $mod->modname).
                   '<a href="'.$CFG->wwwroot.'/mod/'.$url.'">'.$mod->name.'</a></li>';
     }
 
@@ -2537,8 +2618,7 @@ function print_grade_menu($courseid, $name, $current, $includenograde=true, $ret
     }
     $output .= html_writer::select($grades, $name, $current, false);
 
-    $helppix = $OUTPUT->pix_url('help');
-    $linkobject = '<span class="helplink"><img class="iconhelp" alt="'.$strscales.'" src="'.$helppix.'" /></span>';
+    $linkobject = '<span class="helplink">' . $OUTPUT->pix_icon('help', $strscales) . '</span>';
     $link = new moodle_url('/course/scales.php', array('id' => $courseid, 'list' => 1));
     $action = new popup_action('click', $link, 'ratingscales', array('height' => 400, 'width' => 500));
     $output .= $OUTPUT->action_link($link, $linkobject, $action, array('title' => $strscales));
@@ -2570,7 +2650,7 @@ function mdie($msg='', $errorcode=1) {
  * Print a message and exit.
  *
  * @param string $message The message to print in the notice
- * @param string $link The link to use for the continue button
+ * @param moodle_url|string $link The link to use for the continue button
  * @param object $course A course object. Unused.
  * @return void This function simply exits
  */
@@ -2867,6 +2947,10 @@ function rebuildnolinktag($text) {
 function print_maintenance_message() {
     global $CFG, $SITE, $PAGE, $OUTPUT;
 
+    header($_SERVER['SERVER_PROTOCOL'] . ' 503 Moodle under maintenance');
+    header('Status: 503 Moodle under maintenance');
+    header('Retry-After: 300');
+
     $PAGE->set_pagetype('maintenance-message');
     $PAGE->set_pagelayout('maintenance');
     $PAGE->set_title(strip_tags($SITE->fullname));
@@ -3095,183 +3179,6 @@ function is_in_popup() {
     $inpopup = optional_param('inpopup', '', PARAM_BOOL);
 
     return ($inpopup);
-}
-
-/**
- * Progress bar class.
- *
- * Manages the display of a progress bar.
- *
- * To use this class.
- * - construct
- * - call create (or use the 3rd param to the constructor)
- * - call update or update_full() or update() repeatedly
- *
- * @copyright 2008 jamiesensei
- * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @package core
- */
-class progress_bar {
-    /** @var string html id */
-    private $html_id;
-    /** @var int total width */
-    private $width;
-    /** @var int last percentage printed */
-    private $percent = 0;
-    /** @var int time when last printed */
-    private $lastupdate = 0;
-    /** @var int when did we start printing this */
-    private $time_start = 0;
-
-    /**
-     * Constructor
-     *
-     * Prints JS code if $autostart true.
-     *
-     * @param string $html_id
-     * @param int $width
-     * @param bool $autostart Default to false
-     */
-    public function __construct($htmlid = '', $width = 500, $autostart = false) {
-        if (!empty($htmlid)) {
-            $this->html_id  = $htmlid;
-        } else {
-            $this->html_id  = 'pbar_'.uniqid();
-        }
-
-        $this->width = $width;
-
-        if ($autostart) {
-            $this->create();
-        }
-    }
-
-    /**
-     * Create a new progress bar, this function will output html.
-     *
-     * @return void Echo's output
-     */
-    public function create() {
-        global $PAGE;
-
-        $this->time_start = microtime(true);
-        if (CLI_SCRIPT) {
-            return; // Temporary solution for cli scripts.
-        }
-
-        $PAGE->requires->string_for_js('secondsleft', 'moodle');
-
-        $htmlcode = <<<EOT
-        <div class="progressbar_container" style="width: {$this->width}px;" id="{$this->html_id}">
-            <h2></h2>
-            <div class="progress progress-striped active">
-                <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">&nbsp;</div>
-            </div>
-            <p></p>
-        </div>
-EOT;
-        flush();
-        echo $htmlcode;
-        flush();
-    }
-
-    /**
-     * Update the progress bar
-     *
-     * @param int $percent from 1-100
-     * @param string $msg
-     * @return void Echo's output
-     * @throws coding_exception
-     */
-    private function _update($percent, $msg) {
-        if (empty($this->time_start)) {
-            throw new coding_exception('You must call create() (or use the $autostart ' .
-                    'argument to the constructor) before you try updating the progress bar.');
-        }
-
-        if (CLI_SCRIPT) {
-            return; // Temporary solution for cli scripts.
-        }
-
-        $estimate = $this->estimate($percent);
-
-        if ($estimate === null) {
-            // Always do the first and last updates.
-        } else if ($estimate == 0) {
-            // Always do the last updates.
-        } else if ($this->lastupdate + 20 < time()) {
-            // We must update otherwise browser would time out.
-        } else if (round($this->percent, 2) === round($percent, 2)) {
-            // No significant change, no need to update anything.
-            return;
-        }
-        if (is_numeric($estimate)) {
-            $estimate = get_string('secondsleft', 'moodle', round($estimate, 2));
-        }
-
-        $this->percent = round($percent, 2);
-        $this->lastupdate = microtime(true);
-
-        echo html_writer::script(js_writer::function_call('updateProgressBar',
-            array($this->html_id, $this->percent, $msg, $estimate)));
-        flush();
-    }
-
-    /**
-     * Estimate how much time it is going to take.
-     *
-     * @param int $pt from 1-100
-     * @return mixed Null (unknown), or int
-     */
-    private function estimate($pt) {
-        if ($this->lastupdate == 0) {
-            return null;
-        }
-        if ($pt < 0.00001) {
-            return null; // We do not know yet how long it will take.
-        }
-        if ($pt > 99.99999) {
-            return 0; // Nearly done, right?
-        }
-        $consumed = microtime(true) - $this->time_start;
-        if ($consumed < 0.001) {
-            return null;
-        }
-
-        return (100 - $pt) * ($consumed / $pt);
-    }
-
-    /**
-     * Update progress bar according percent
-     *
-     * @param int $percent from 1-100
-     * @param string $msg the message needed to be shown
-     */
-    public function update_full($percent, $msg) {
-        $percent = max(min($percent, 100), 0);
-        $this->_update($percent, $msg);
-    }
-
-    /**
-     * Update progress bar according the number of tasks
-     *
-     * @param int $cur current task number
-     * @param int $total total task number
-     * @param string $msg message
-     */
-    public function update($cur, $total, $msg) {
-        $percent = ($cur / $total) * 100;
-        $this->update_full($percent, $msg);
-    }
-
-    /**
-     * Restart the progress bar.
-     */
-    public function restart() {
-        $this->percent    = 0;
-        $this->lastupdate = 0;
-        $this->time_start = 0;
-    }
 }
 
 /**
@@ -3664,14 +3571,4 @@ function get_formatted_help_string($identifier, $component, $ajax = false, $a = 
             html_writer::tag('strong', 'TODO') . ": missing help string [{$identifier}_help, {$component}]");
     }
     return $data;
-}
-
-/**
- * Renders a hidden password field so that browsers won't incorrectly autofill password fields with the user's password.
- *
- * @since 3.0
- * @return string HTML to prevent password autofill
- */
-function prevent_form_autofill_password() {
-    return '<div class="hide"><input type="text" class="ignoredirty" /><input type="password" class="ignoredirty" /></div>';
 }

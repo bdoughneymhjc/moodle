@@ -591,7 +591,7 @@ class core_upgradelib_testcase extends advanced_testcase {
         // Create some courses.
         $courses = array();
         $contexts = array();
-        for ($i = 0; $i < 37; $i++) {
+        for ($i = 0; $i < 45; $i++) {
             $course = $this->getDataGenerator()->create_course();
             $context = context_course::instance($course->id);
             if (in_array($i, array(2, 5, 10, 13, 14, 19, 23, 25, 30, 34, 36))) {
@@ -603,37 +603,43 @@ class core_upgradelib_testcase extends advanced_testcase {
                 $this->assign_bad_letter_boundary($context->id);
             }
 
-            if (in_array($i, array(9, 10, 11, 18, 19, 20, 29, 30, 31))) {
+            if (in_array($i, array(3, 9, 10, 11, 18, 19, 20, 29, 30, 31, 40))) {
                 grade_set_setting($course->id, 'displaytype', '3');
             } else if (in_array($i, array(8, 17, 28))) {
                 grade_set_setting($course->id, 'displaytype', '2');
             }
 
-            if ($i >= 7) {
-                $assignrow = $this->getDataGenerator()->create_module('assign', array('course' => $course->id, 'name' => 'Test!'));
-                $gi = grade_item::fetch(
-                        array('itemtype' => 'mod',
-                              'itemmodule' => 'assign',
-                              'iteminstance' => $assignrow->id,
-                              'courseid' => $course->id));
-                if (in_array($i, array(13, 14, 15, 23, 24, 34, 35, 36))) {
-                    grade_item::set_properties($gi, array('display', 3));
-                    $gi->update();
-                } else if (in_array($i, array(12, 21, 32))) {
-                    grade_item::set_properties($gi, array('display', 2));
-                    $gi->update();
-                }
-                $gradegrade = new grade_grade();
-                $gradegrade->itemid = $gi->id;
-                $gradegrade->userid = $user->id;
-                $gradegrade->rawgrade = 55.5563;
-                $gradegrade->finalgrade = 55.5563;
-                $gradegrade->rawgrademax = 100;
-                $gradegrade->rawgrademin = 0;
-                $gradegrade->timecreated = time();
-                $gradegrade->timemodified = time();
-                $gradegrade->insert();
+            if (in_array($i, array(37, 43))) {
+                // Show.
+                grade_set_setting($course->id, 'report_user_showlettergrade', '1');
+            } else if (in_array($i, array(38, 42))) {
+                // Hide.
+                grade_set_setting($course->id, 'report_user_showlettergrade', '0');
             }
+
+            $assignrow = $this->getDataGenerator()->create_module('assign', array('course' => $course->id, 'name' => 'Test!'));
+            $gi = grade_item::fetch(
+                    array('itemtype' => 'mod',
+                          'itemmodule' => 'assign',
+                          'iteminstance' => $assignrow->id,
+                          'courseid' => $course->id));
+            if (in_array($i, array(6, 13, 14, 15, 23, 24, 34, 35, 36, 41))) {
+                grade_item::set_properties($gi, array('display' => 3));
+                $gi->update();
+            } else if (in_array($i, array(12, 21, 32))) {
+                grade_item::set_properties($gi, array('display' => 2));
+                $gi->update();
+            }
+            $gradegrade = new grade_grade();
+            $gradegrade->itemid = $gi->id;
+            $gradegrade->userid = $user->id;
+            $gradegrade->rawgrade = 55.5563;
+            $gradegrade->finalgrade = 55.5563;
+            $gradegrade->rawgrademax = 100;
+            $gradegrade->rawgrademin = 0;
+            $gradegrade->timecreated = time();
+            $gradegrade->timemodified = time();
+            $gradegrade->insert();
 
             $contexts[] = $context;
             $courses[] = $course;
@@ -659,7 +665,7 @@ class core_upgradelib_testcase extends advanced_testcase {
 
         // System setting for grade letter boundaries (default).
         set_config('grade_displaytype', '3');
-        for ($i = 0; $i < 37; $i++) {
+        for ($i = 0; $i < 45; $i++) {
             unset_config('gradebook_calculations_freeze_' . $courses[$i]->id);
         }
         upgrade_course_letter_boundary();
@@ -686,7 +692,7 @@ class core_upgradelib_testcase extends advanced_testcase {
         // System setting for grade letter boundaries (custom with problem).
         $systemcontext = context_system::instance();
         $this->assign_bad_letter_boundary($systemcontext->id);
-        for ($i = 0; $i < 37; $i++) {
+        for ($i = 0; $i < 45; $i++) {
             unset_config('gradebook_calculations_freeze_' . $courses[$i]->id);
         }
         upgrade_course_letter_boundary();
@@ -716,7 +722,7 @@ class core_upgradelib_testcase extends advanced_testcase {
 
         // System setting not showing letters.
         set_config('grade_displaytype', '2');
-        for ($i = 0; $i < 37; $i++) {
+        for ($i = 0; $i < 45; $i++) {
             unset_config('gradebook_calculations_freeze_' . $courses[$i]->id);
         }
         upgrade_course_letter_boundary();
@@ -741,6 +747,37 @@ class core_upgradelib_testcase extends advanced_testcase {
         $this->assertEquals(20160518, $CFG->{'gradebook_calculations_freeze_' . $courses[35]->id});
         // [36] A course with grade display settings of letters with modified and good boundary (not 57) Should not be frozen.
         $this->assertTrue(empty($CFG->{'gradebook_calculations_freeze_' . $courses[36]->id}));
+
+        // Previous site conditions still exist.
+        for ($i = 0; $i < 45; $i++) {
+            unset_config('gradebook_calculations_freeze_' . $courses[$i]->id);
+        }
+        upgrade_course_letter_boundary();
+
+        // [37] Site setting for not showing the letter column and course setting set to show (frozen).
+        $this->assertEquals(20160518, $CFG->{'gradebook_calculations_freeze_' . $courses[37]->id});
+        // [38] Site setting for not showing the letter column and course setting set to hide.
+        $this->assertTrue(empty($CFG->{'gradebook_calculations_freeze_' . $courses[38]->id}));
+        // [39] Site setting for not showing the letter column and course setting set to default.
+        $this->assertTrue(empty($CFG->{'gradebook_calculations_freeze_' . $courses[39]->id}));
+        // [40] Site setting for not showing the letter column and course setting set to default. Course display set to letters (frozen).
+        $this->assertEquals(20160518, $CFG->{'gradebook_calculations_freeze_' . $courses[40]->id});
+        // [41] Site setting for not showing the letter column and course setting set to default. Grade item display set to letters (frozen).
+        $this->assertEquals(20160518, $CFG->{'gradebook_calculations_freeze_' . $courses[41]->id});
+
+        // Previous site conditions still exist.
+        for ($i = 0; $i < 45; $i++) {
+            unset_config('gradebook_calculations_freeze_' . $courses[$i]->id);
+        }
+        set_config('grade_report_user_showlettergrade', '1');
+        upgrade_course_letter_boundary();
+
+        // [42] Site setting for showing the letter column, but course setting set to hide.
+        $this->assertTrue(empty($CFG->{'gradebook_calculations_freeze_' . $courses[42]->id}));
+        // [43] Site setting for showing the letter column and course setting set to show (frozen).
+        $this->assertEquals(20160518, $CFG->{'gradebook_calculations_freeze_' . $courses[43]->id});
+        // [44] Site setting for showing the letter column and course setting set to default (frozen).
+        $this->assertEquals(20160518, $CFG->{'gradebook_calculations_freeze_' . $courses[44]->id});
     }
 
     /**
@@ -828,5 +865,115 @@ class core_upgradelib_testcase extends advanced_testcase {
             // There is no API to do this, so we have to manually insert into the database.
             $DB->insert_record('grade_letters', $record);
         }
+    }
+
+    /**
+     * Test libcurl custom check api.
+     */
+    public function test_check_libcurl_version() {
+        $supportedversion = 0x071304;
+        $curlinfo = curl_version();
+        $currentversion = $curlinfo['version_number'];
+
+        $result = new environment_results("custom_checks");
+        if ($currentversion < $supportedversion) {
+            $this->assertFalse(check_libcurl_version($result)->getStatus());
+        } else {
+            $this->assertNull(check_libcurl_version($result));
+        }
+    }
+
+    /**
+     * Create two pages with blocks, delete one page and make sure upgrade script deletes orphaned blocks
+     */
+    public function test_delete_block_positions() {
+        global $DB, $CFG;
+        require_once($CFG->dirroot . '/my/lib.php');
+        $this->resetAfterTest();
+
+        // Make sure each block on system dashboard page has a position.
+        $systempage = $DB->get_record('my_pages', array('userid' => null, 'private' => MY_PAGE_PRIVATE));
+        $systemcontext = context_system::instance();
+        $blockinstances = $DB->get_records('block_instances', array('parentcontextid' => $systemcontext->id,
+            'pagetypepattern' => 'my-index', 'subpagepattern' => $systempage->id));
+        $this->assertNotEmpty($blockinstances);
+        foreach ($blockinstances as $bi) {
+            $DB->insert_record('block_positions', ['subpage' => $systempage->id, 'pagetype' => 'my-index', 'contextid' => $systemcontext->id,
+                'blockinstanceid' => $bi->id, 'visible' => 1, 'weight' => $bi->defaultweight]);
+        }
+
+        // Create two users and make two copies of the system dashboard.
+        $user1 = $this->getDataGenerator()->create_user();
+        $user2 = $this->getDataGenerator()->create_user();
+        $page1 = my_copy_page($user1->id, MY_PAGE_PRIVATE, 'my-index');
+        $page2 = my_copy_page($user2->id, MY_PAGE_PRIVATE, 'my-index');
+
+        $context1 = context_user::instance($user1->id);
+        $context2 = context_user::instance($user2->id);
+
+        // Delete second page without deleting block positions.
+        $DB->delete_records('my_pages', ['id' => $page2->id]);
+
+        // Blocks are still here.
+        $this->assertEquals(count($blockinstances), $DB->count_records('block_positions', ['subpage' => $page1->id, 'pagetype' => 'my-index', 'contextid' => $context1->id]));
+        $this->assertEquals(count($blockinstances), $DB->count_records('block_positions', ['subpage' => $page2->id, 'pagetype' => 'my-index', 'contextid' => $context2->id]));
+
+        // Run upgrade script that should delete orphaned block_positions.
+        upgrade_block_positions();
+
+        // First user still has all his block_positions, second user does not.
+        $this->assertEquals(count($blockinstances), $DB->count_records('block_positions', ['subpage' => $page1->id, 'pagetype' => 'my-index', 'contextid' => $context1->id]));
+        $this->assertEquals(0, $DB->count_records('block_positions', ['subpage' => $page2->id, 'pagetype' => 'my-index']));
+    }
+
+    /**
+     * Test the conversion of auth plugin settings names.
+     */
+    public function test_upgrade_fix_config_auth_plugin_names() {
+        $this->resetAfterTest();
+
+        // Let the plugin auth_foo use legacy format only.
+        set_config('name1', 'val1', 'auth/foo');
+        set_config('name2', 'val2', 'auth/foo');
+
+        // Let the plugin auth_bar use new format only.
+        set_config('name1', 'val1', 'auth_bar');
+        set_config('name2', 'val2', 'auth_bar');
+
+        // Let the plugin auth_baz use a mix of legacy and new format, with no conflicts.
+        set_config('name1', 'val1', 'auth_baz');
+        set_config('name1', 'val1', 'auth/baz');
+        set_config('name2', 'val2', 'auth/baz');
+        set_config('name3', 'val3', 'auth_baz');
+
+        // Let the plugin auth_qux use a mix of legacy and new format, with conflicts.
+        set_config('name1', 'val1', 'auth_qux');
+        set_config('name1', 'val2', 'auth/qux');
+
+        // Execute the migration.
+        upgrade_fix_config_auth_plugin_names('foo');
+        upgrade_fix_config_auth_plugin_names('bar');
+        upgrade_fix_config_auth_plugin_names('baz');
+        upgrade_fix_config_auth_plugin_names('qux');
+
+        // Assert that legacy settings are gone and no new were introduced.
+        $this->assertEmpty((array) get_config('auth/foo'));
+        $this->assertEmpty((array) get_config('auth/bar'));
+        $this->assertEmpty((array) get_config('auth/baz'));
+        $this->assertEmpty((array) get_config('auth/qux'));
+
+        // Assert values were simply kept where there was no conflict.
+        $this->assertSame('val1', get_config('auth_foo', 'name1'));
+        $this->assertSame('val2', get_config('auth_foo', 'name2'));
+
+        $this->assertSame('val1', get_config('auth_bar', 'name1'));
+        $this->assertSame('val2', get_config('auth_bar', 'name2'));
+
+        $this->assertSame('val1', get_config('auth_baz', 'name1'));
+        $this->assertSame('val2', get_config('auth_baz', 'name2'));
+        $this->assertSame('val3', get_config('auth_baz', 'name3'));
+
+        // Assert the new format took precedence in case of conflict.
+        $this->assertSame('val1', get_config('auth_qux', 'name1'));
     }
 }

@@ -121,6 +121,21 @@ class restore_gradebook_structure_step extends restore_structure_step {
             return false;
         }
 
+        // Identify the backup we're dealing with.
+        $backuprelease = floatval($this->get_task()->get_info()->backup_release); // The major version: 2.9, 3.0, ...
+        $backupbuild = 0;
+        preg_match('/(\d{8})/', $this->get_task()->get_info()->moodle_release, $matches);
+        if (!empty($matches[1])) {
+            $backupbuild = (int) $matches[1]; // The date of Moodle build at the time of the backup.
+        }
+
+        // On older versions the freeze value has to be converted.
+        // We do this from here as it is happening right before the file is read.
+        // This only targets the backup files that can contain the legacy freeze.
+        if ($backupbuild > 20150618 && ($backuprelease < 3.0 || $backupbuild < 20160527)) {
+            $this->rewrite_step_backup_file_for_legacy_freeze($fullpath);
+        }
+
         // Arrived here, execute the step
         return true;
      }
@@ -129,7 +144,7 @@ class restore_gradebook_structure_step extends restore_structure_step {
         $paths = array();
         $userinfo = $this->task->get_setting_value('users');
 
-        $paths[] = new restore_path_element('gradebook', '/gradebook');
+        $paths[] = new restore_path_element('attributes', '/gradebook/attributes');
         $paths[] = new restore_path_element('grade_category', '/gradebook/grade_categories/grade_category');
         $paths[] = new restore_path_element('grade_item', '/gradebook/grade_items/grade_item');
         if ($userinfo) {
@@ -141,7 +156,7 @@ class restore_gradebook_structure_step extends restore_structure_step {
         return $paths;
     }
 
-    protected function process_gradebook($data) {
+    protected function process_attributes($data) {
         // For non-merge restore types:
         // Unset 'gradebook_calculations_freeze_' in the course and replace with the one from the backup.
         $target = $this->get_task()->get_target();
@@ -581,6 +596,85 @@ class restore_gradebook_structure_step extends restore_structure_step {
             }
         }
     }
+
+    /**
+     * Rewrite step definition to handle the legacy freeze attribute.
+     *
+     * In previous backups the calculations_freeze property was stored as an attribute of the
+     * top level node <gradebook>. The backup API, however, do not process grandparent nodes.
+     * It only processes definitive children, and their parent attributes.
+     *
+     * We had:
+     *
+     * <gradebook calculations_freeze="20160511">
+     *   <grade_categories>
+     *     <grade_category id="10">
+     *       <depth>1</depth>
+     *       ...
+     *     </grade_category>
+     *   </grade_categories>
+     *   ...
+     * </gradebook>
+     *
+     * And this method will convert it to:
+     *
+     * <gradebook >
+     *   <attributes>
+     *     <calculations_freeze>20160511</calculations_freeze>
+     *   </attributes>
+     *   <grade_categories>
+     *     <grade_category id="10">
+     *       <depth>1</depth>
+     *       ...
+     *     </grade_category>
+     *   </grade_categories>
+     *   ...
+     * </gradebook>
+     *
+     * Note that we cannot just load the XML file in memory as it could potentially be huge.
+     * We can also completely ignore if the node <attributes> is already in the backup
+     * file as it never existed before.
+     *
+     * @param string $filepath The absolute path to the XML file.
+     * @return void
+     */
+    protected function rewrite_step_backup_file_for_legacy_freeze($filepath) {
+        $foundnode = false;
+        $newfile = make_request_directory(true) . DIRECTORY_SEPARATOR . 'file.xml';
+        $fr = fopen($filepath, 'r');
+        $fw = fopen($newfile, 'w');
+        if ($fr && $fw) {
+            while (($line = fgets($fr, 4096)) !== false) {
+                if (!$foundnode && strpos($line, '<gradebook ') === 0) {
+                    $foundnode = true;
+                    $matches = array();
+                    $pattern = '@calculations_freeze=.([0-9]+).@';
+                    if (preg_match($pattern, $line, $matches)) {
+                        $freeze = $matches[1];
+                        $line = preg_replace($pattern, '', $line);
+                        $line .= "  <attributes>\n    <calculations_freeze>$freeze</calculations_freeze>\n  </attributes>\n";
+                    }
+                }
+                fputs($fw, $line);
+            }
+            if (!feof($fr)) {
+                throw new restore_step_exception('Error while attempting to rewrite the gradebook step file.');
+            }
+            fclose($fr);
+            fclose($fw);
+            if (!rename($newfile, $filepath)) {
+                throw new restore_step_exception('Error while attempting to rename the gradebook step file.');
+            }
+        } else {
+            if ($fr) {
+                fclose($fr);
+            }
+            if ($fw) {
+                fclose($fw);
+            }
+        }
+    }
+
 }
 
 /**
@@ -1499,6 +1593,10 @@ class restore_section_structure_step extends restore_structure_step {
                 }
             }
             $newitemid = $DB->insert_record('course_sections', $section);
+            $section->id = $newitemid;
+
+            core\event\course_section_created::create_from_section($section)->trigger();
+
             $restorefiles = true;
 
         // Section exists, update non-empty information
@@ -1518,6 +1616,17 @@ class restore_section_structure_step extends restore_structure_step {
 
             $DB->update_record('course_sections', $section);
             $newitemid = $secrec->id;
+
+            // Trigger an event for course section update.
+            $event = \core\event\course_section_updated::create(
+                array(
+                    'objectid' => $section->id,
+                    'courseid' => $section->course,
+                    'context' => context_course::instance($section->course),
+                    'other' => array('sectionnum' => $section->section)
+                )
+            );
+            $event->trigger();
         }
 
         // Annotate the section mapping, with restorefiles option if needed
@@ -1716,36 +1825,30 @@ class restore_course_structure_step extends restore_structure_step {
         $context = context::instance_by_id($this->task->get_contextid());
         $userid = $this->task->get_userid();
         $target = $this->get_task()->get_target();
-        $isnewcourse = $target != backup::TARGET_CURRENT_ADDING && $target != backup::TARGET_EXISTING_ADDING;
+        $isnewcourse = $target == backup::TARGET_NEW_COURSE;
 
         // When restoring to a new course we can set all the things except for the ID number.
         $canchangeidnumber = $isnewcourse || has_capability('moodle/course:changeidnumber', $context, $userid);
-        $canchangeshortname = $isnewcourse || has_capability('moodle/course:changeshortname', $context, $userid);
-        $canchangefullname = $isnewcourse || has_capability('moodle/course:changefullname', $context, $userid);
         $canchangesummary = $isnewcourse || has_capability('moodle/course:changesummary', $context, $userid);
 
         $data = (object)$data;
         $data->id = $this->get_courseid();
 
+        // Calculate final course names, to avoid dupes.
         $fullname  = $this->get_setting_value('course_fullname');
         $shortname = $this->get_setting_value('course_shortname');
-        $startdate = $this->get_setting_value('course_startdate');
-
-        // Calculate final course names, to avoid dupes.
-        list($fullname, $shortname) = restore_dbops::calculate_course_names($this->get_courseid(), $fullname, $shortname);
-
-        if ($canchangefullname) {
-            $data->fullname = $fullname;
-        } else {
+        list($data->fullname, $data->shortname) = restore_dbops::calculate_course_names($this->get_courseid(),
+            $fullname === false ? $data->fullname : $fullname,
+            $shortname === false ? $data->shortname : $shortname);
+        // Do not modify the course names at all when merging and user selected to keep the names (or prohibited by cap).
+        if (!$isnewcourse && $fullname === false) {
             unset($data->fullname);
         }
-
-        if ($canchangeshortname) {
-            $data->shortname = $shortname;
-        } else {
+        if (!$isnewcourse && $shortname === false) {
             unset($data->shortname);
         }
 
+        // Unset summary if user can't change it.
         if (!$canchangesummary) {
             unset($data->summary);
             unset($data->summaryformat);
@@ -1776,6 +1879,10 @@ class restore_course_structure_step extends restore_structure_step {
         $this->legacyrestrictmodules = !empty($data->restrictmodules);
 
         $data->startdate= $this->apply_date_offset($data->startdate);
+        if (isset($data->enddate)) {
+            $data->enddate = $this->apply_date_offset($data->enddate);
+        }
+
         if ($data->defaultgroupingid) {
             $data->defaultgroupingid = $this->get_mappingid('grouping', $data->defaultgroupingid);
         }
@@ -2056,12 +2163,17 @@ class restore_enrolments_structure_step extends restore_structure_step {
 
     protected function define_structure() {
 
-        $enrol = new restore_path_element('enrol', '/enrolments/enrols/enrol');
-        $enrolment = new restore_path_element('enrolment', '/enrolments/enrols/enrol/user_enrolments/enrolment');
+        $userinfo = $this->get_setting_value('users');
+
+        $paths = [];
+        $paths[] = $enrol = new restore_path_element('enrol', '/enrolments/enrols/enrol');
+        if ($userinfo) {
+            $paths[] = new restore_path_element('enrolment', '/enrolments/enrols/enrol/user_enrolments/enrolment');
+        }
         // Attach local plugin stucture to enrol element.
         $this->add_plugin_structure('enrol', $enrol);
 
-        return array($enrol, $enrolment);
+        return $paths;
     }
 
     /**
@@ -2105,7 +2217,14 @@ class restore_enrolments_structure_step extends restore_structure_step {
         $data->roleid   = $this->get_mappingid('role', $data->roleid);
         $data->courseid = $courserec->id;
 
-        if ($this->get_setting_value('enrol_migratetomanual')) {
+        if (!$this->get_setting_value('users') && $this->get_setting_value('enrolments') == backup::ENROL_WITHUSERS) {
+            $converttomanual = true;
+        } else {
+            $converttomanual = ($this->get_setting_value('enrolments') == backup::ENROL_NEVER);
+        }
+
+        if ($converttomanual) {
+            // Restore enrolments as manual enrolments.
             unset($data->sortorder); // Remove useless sortorder from <2.4 backups.
             if (!enrol_is_enabled('manual')) {
                 $this->set_mapping('enrol', $oldid, 0);
@@ -2126,7 +2245,7 @@ class restore_enrolments_structure_step extends restore_structure_step {
         } else {
             if (!enrol_is_enabled($data->enrol) or !isset($this->plugins[$data->enrol])) {
                 $this->set_mapping('enrol', $oldid, 0);
-                $message = "Enrol plugin '$data->enrol' data can not be restored because it is not enabled, use migration to manual enrolments";
+                $message = "Enrol plugin '$data->enrol' data can not be restored because it is not enabled, consider restoring without enrolment methods";
                 $this->log($message, backup::LOG_WARNING);
                 return;
             }
@@ -2534,6 +2653,17 @@ class restore_calendarevents_structure_step extends restore_structure_step {
         $data = (object)$data;
         $oldid = $data->id;
         $restorefiles = true; // We'll restore the files
+        // User overrides for activities are identified by having a courseid of zero with
+        // both a modulename and instance value set.
+        $isuseroverride = !$data->courseid && $data->modulename && $data->instance;
+
+        // If we don't want to include user data and this record is a user override event
+        // for an activity then we should not create it. (Only activity events can be user override events - which must have this
+        // setting).
+        if ($isuseroverride && $this->task->setting_exists('userinfo') && !$this->task->get_setting_value('userinfo')) {
+            return;
+        }
+
         // Find the userid and the groupid associated with the event.
         $data->userid = $this->get_mappingid('user', $data->userid);
         if ($data->userid === false) {
@@ -2569,18 +2699,23 @@ class restore_calendarevents_structure_step extends restore_structure_step {
                 'name'           => $data->name,
                 'description'    => $data->description,
                 'format'         => $data->format,
-                'courseid'       => $this->get_courseid(),
+                // User overrides in activities use a course id of zero. All other event types
+                // must use the mapped course id.
+                'courseid'       => $data->courseid ? $this->get_courseid() : 0,
                 'groupid'        => $data->groupid,
                 'userid'         => $data->userid,
-                'repeatid'       => $data->repeatid,
+                'repeatid'       => $this->get_mappingid('event', $data->repeatid),
                 'modulename'     => $data->modulename,
+                'type'           => isset($data->type) ? $data->type : 0,
                 'eventtype'      => $data->eventtype,
                 'timestart'      => $this->apply_date_offset($data->timestart),
                 'timeduration'   => $data->timeduration,
+                'timesort'       => isset($data->timesort) ? $this->apply_date_offset($data->timesort) : null,
                 'visible'        => $data->visible,
                 'uuid'           => $data->uuid,
                 'sequence'       => $data->sequence,
-                'timemodified'    => $this->apply_date_offset($data->timemodified));
+                'timemodified'   => $this->apply_date_offset($data->timemodified),
+                'priority'       => isset($data->priority) ? $data->priority : null);
         if ($this->name == 'activity_calendar') {
             $params['instance'] = $this->task->get_activityid();
         } else {
@@ -2590,17 +2725,27 @@ class restore_calendarevents_structure_step extends restore_structure_step {
                   FROM {event}
                  WHERE " . $DB->sql_compare_text('name', 255) . " = " . $DB->sql_compare_text('?', 255) . "
                    AND courseid = ?
-                   AND repeatid = ?
                    AND modulename = ?
+                   AND instance = ?
                    AND timestart = ?
                    AND timeduration = ?
                    AND " . $DB->sql_compare_text('description', 255) . " = " . $DB->sql_compare_text('?', 255);
-        $arg = array ($params['name'], $params['courseid'], $params['repeatid'], $params['modulename'], $params['timestart'], $params['timeduration'], $params['description']);
+        $arg = array ($params['name'], $params['courseid'], $params['modulename'], $params['instance'], $params['timestart'], $params['timeduration'], $params['description']);
         $result = $DB->record_exists_sql($sql, $arg);
         if (empty($result)) {
             $newitemid = $DB->insert_record('event', $params);
             $this->set_mapping('event', $oldid, $newitemid);
             $this->set_mapping('event_description', $oldid, $newitemid, $restorefiles);
+        }
+        // With repeating events, each event has the repeatid pointed at the first occurrence.
+        // Since the repeatid will be empty when the first occurrence is restored,
+        // Get the repeatid from the second occurrence of the repeating event and use that to update the first occurrence.
+        // Then keep a list of repeatids so we only perform this update once.
+        static $repeatids = array();
+        if (!empty($params['repeatid']) && !in_array($params['repeatid'], $repeatids)) {
+            // This entry is repeated so the repeatid field must be set.
+            $DB->set_field('event', 'repeatid', $params['repeatid'], array('id' => $params['repeatid']));
+            $repeatids[] = $params['repeatid'];
         }
 
     }
@@ -2938,7 +3083,8 @@ class restore_course_logs_structure_step extends restore_structure_step {
 
         $data = (object)($data);
 
-        $data->time = $this->apply_date_offset($data->time);
+        // There is no need to roll dates. Logs are supposed to be immutable. See MDL-44961.
+
         $data->userid = $this->get_mappingid('user', $data->userid);
         $data->course = $this->get_courseid();
         $data->cmid = 0;
@@ -2985,7 +3131,8 @@ class restore_activity_logs_structure_step extends restore_course_logs_structure
 
         $data = (object)($data);
 
-        $data->time = $this->apply_date_offset($data->time);
+        // There is no need to roll dates. Logs are supposed to be immutable. See MDL-44961.
+
         $data->userid = $this->get_mappingid('user', $data->userid);
         $data->course = $this->get_courseid();
         $data->cmid = $this->task->get_moduleid();
@@ -3159,14 +3306,14 @@ class restore_course_competencies_structure_step extends restore_structure_step 
             return;
         }
         $competency = \core_competency\competency::get_record(array('idnumber' => $data->idnumber,
-            'competencyframeworkid' => $framework->get_id()));
+            'competencyframeworkid' => $framework->get('id')));
         if (!$competency) {
             return;
         }
-        $this->set_mapping(\core_competency\competency::TABLE, $data->id, $competency->get_id());
+        $this->set_mapping(\core_competency\competency::TABLE, $data->id, $competency->get('id'));
 
         $params = array(
-            'competencyid' => $competency->get_id(),
+            'competencyid' => $competency->get('id'),
             'courseid' => $this->task->get_courseid()
         );
         $query = 'competencyid = :competencyid AND courseid = :courseid';
@@ -3270,13 +3417,13 @@ class restore_activity_competencies_structure_step extends restore_structure_ste
             return;
         }
         $competency = \core_competency\competency::get_record(array('idnumber' => $data->idnumber,
-            'competencyframeworkid' => $framework->get_id()));
+            'competencyframeworkid' => $framework->get('id')));
         if (!$competency) {
             return;
         }
 
         $params = array(
-            'competencyid' => $competency->get_id(),
+            'competencyid' => $competency->get('id'),
             'cmid' => $this->task->get_moduleid()
         );
         $query = 'competencyid = :competencyid AND cmid = :cmid';
@@ -4232,6 +4379,14 @@ class restore_create_categories_and_questions extends restore_structure_step {
             $mapping->parentitemid = $this->get_mappingid('context', $this->task->get_old_contextid());
         }
         $data->contextid = $mapping->parentitemid;
+
+        // Before 3.1, the 'stamp' field could be erroneously duplicated.
+        // From 3.1 onwards, there's a unique index of (contextid, stamp).
+        // If we encounter a duplicate in an old restore file, just generate a new stamp.
+        // This is the same as what happens during an upgrade to 3.1+ anyway.
+        if ($DB->record_exists('question_categories', ['stamp' => $data->stamp, 'contextid' => $data->contextid])) {
+            $data->stamp = make_unique_id_code();
+        }
 
         // Let's create the question_category and save mapping
         $newitemid = $DB->insert_record('question_categories', $data);
@@ -5305,5 +5460,75 @@ abstract class restore_questions_activity_structure_step extends restore_activit
         } else {
             return $state->answer;
         }
+    }
+}
+
+/**
+ * Restore completion defaults for each module type
+ *
+ * @package     core_backup
+ * @copyright   2017 Marina Glancy
+ * @license     http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+class restore_completion_defaults_structure_step extends restore_structure_step {
+    /**
+     * To conditionally decide if this step must be executed.
+     */
+    protected function execute_condition() {
+        // No completion on the front page.
+        if ($this->get_courseid() == SITEID) {
+            return false;
+        }
+
+        // No default completion info found, don't execute.
+        $fullpath = $this->task->get_taskbasepath();
+        $fullpath = rtrim($fullpath, '/') . '/' . $this->filename;
+        if (!file_exists($fullpath)) {
+            return false;
+        }
+
+        // Arrived here, execute the step.
+        return true;
+    }
+
+    /**
+     * Function that will return the structure to be processed by this restore_step.
+     *
+     * @return restore_path_element[]
+     */
+    protected function define_structure() {
+        return [new restore_path_element('completion_defaults', '/course_completion_defaults/course_completion_default')];
+    }
+
+    /**
+     * Processor for path element 'completion_defaults'
+     *
+     * @param stdClass|array $data
+     */
+    protected function process_completion_defaults($data) {
+        global $DB;
+
+        $data = (array)$data;
+        $oldid = $data['id'];
+        unset($data['id']);
+
+        // Find the module by name since id may be different in another site.
+        if (!$mod = $DB->get_record('modules', ['name' => $data['modulename']])) {
+            return;
+        }
+        unset($data['modulename']);
+
+        // Find the existing record.
+        $newid = $DB->get_field('course_completion_defaults', 'id',
+            ['course' => $this->task->get_courseid(), 'module' => $mod->id]);
+        if (!$newid) {
+            $newid = $DB->insert_record('course_completion_defaults',
+                ['course' => $this->task->get_courseid(), 'module' => $mod->id] + $data);
+        } else {
+            $DB->update_record('course_completion_defaults', ['id' => $newid] + $data);
+        }
+
+        // Save id mapping for restoring associated events.
+        $this->set_mapping('course_completion_defaults', $oldid, $newid);
     }
 }

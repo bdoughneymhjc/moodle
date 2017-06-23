@@ -39,6 +39,7 @@ if (!empty($CFG->defaulthomepage) && ($CFG->defaulthomepage == HOMEPAGE_MY) && o
 }
 $PAGE->set_url('/', $urlparams);
 $PAGE->set_course($SITE);
+$PAGE->set_pagelayout('frontpage');
 $PAGE->set_other_editing_capability('moodle/course:update');
 $PAGE->set_other_editing_capability('moodle/course:manageactivities');
 $PAGE->set_other_editing_capability('moodle/course:activityvisibility');
@@ -52,12 +53,14 @@ if ($CFG->forcelogin) {
     user_accesstime_log();
 }
 
-$hassiteconfig = has_capability('moodle/site:config', context_system::instance());
+$hasmaintenanceaccess = has_capability('moodle/site:maintenanceaccess', context_system::instance());
 
 // If the site is currently under maintenance, then print a message.
-if (!empty($CFG->maintenance_enabled) and !$hassiteconfig) {
+if (!empty($CFG->maintenance_enabled) and !$hasmaintenanceaccess) {
     print_maintenance_message();
 }
+
+$hassiteconfig = has_capability('moodle/site:config', context_system::instance());
 
 if ($hassiteconfig && moodle_needs_upgrading()) {
     redirect($CFG->wwwroot .'/'. $CFG->admin .'/index.php');
@@ -104,7 +107,6 @@ if (file_exists($CFG->dirroot.'/local/hub/lib.php') and get_config('local_hub', 
 
 $PAGE->set_pagetype('site-index');
 $PAGE->set_docs_path('');
-$PAGE->set_pagelayout('frontpage');
 $editing = $PAGE->user_is_editing();
 $PAGE->set_title($SITE->fullname);
 $PAGE->set_heading($SITE->fullname);
@@ -145,7 +147,7 @@ if (!empty($CFG->customfrontpageinclude)) {
         $context = context_course::instance(SITEID);
 
         // If the section name is set we show it.
-        if (!is_null($section->name)) {
+        if (trim($section->name) !== '') {
             echo $OUTPUT->heading(
                 format_string($section->name, true, array('context' => $context)),
                 2,
@@ -167,9 +169,9 @@ if (!empty($CFG->customfrontpageinclude)) {
 
         if ($editing && has_capability('moodle/course:update', $context)) {
             $streditsummary = get_string('editsummary');
-            echo "<a title=\"$streditsummary\" ".
-                 " href=\"course/editsection.php?id=$section->id\"><img src=\"" . $OUTPUT->pix_url('t/edit') . "\" ".
-                 " class=\"iconsmall\" alt=\"$streditsummary\" /></a><br /><br />";
+            echo "<a title=\"$streditsummary\" " .
+                 " href=\"course/editsection.php?id=$section->id\">" . $OUTPUT->pix_icon('t/edit', $streditsummary) .
+                 "</a><br /><br />";
         }
 
         $courserenderer = $PAGE->get_renderer('core', 'course');

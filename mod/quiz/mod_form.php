@@ -533,6 +533,19 @@ class mod_quiz_mod_form extends moodleform_mod {
             }
         }
 
+        if (array_key_exists('completion', $data) && $data['completion'] == COMPLETION_TRACKING_AUTOMATIC) {
+            $completionpass = isset($data['completionpass']) ? $data['completionpass'] : $this->current->completionpass;
+
+            // Show an error if require passing grade was selected and the grade to pass was set to 0.
+            if ($completionpass && (empty($data['gradepass']) || grade_floatval($data['gradepass']) == 0)) {
+                if (isset($data['completionpass'])) {
+                    $errors['completionpassgroup'] = get_string('gradetopassnotset', 'quiz');
+                } else {
+                    $errors['gradepass'] = get_string('gradetopassmustbeset', 'quiz');
+                }
+            }
+        }
+
         // Check the boundary value is a number or a percentage, and in range.
         $i = 0;
         while (!empty($data['feedbackboundaries'][$i] )) {
@@ -583,6 +596,10 @@ class mod_quiz_mod_form extends moodleform_mod {
             }
         }
 
+        // If CBM is involved, don't show the warning for grade to pass being larger than the maximum grade.
+        if (($data['preferredbehaviour'] == 'deferredcbm') OR ($data['preferredbehaviour'] == 'immediatecbm')) {
+            unset($errors['gradepass']);
+        }
         // Any other rule plugins.
         $errors = quiz_access_manager::validate_settings_form_fields($errors, $data, $files, $this);
 

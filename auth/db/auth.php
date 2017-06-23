@@ -41,7 +41,7 @@ class auth_plugin_db extends auth_plugin_base {
         require_once($CFG->libdir.'/adodb/adodb.inc.php');
 
         $this->authtype = 'db';
-        $this->config = get_config('auth/db');
+        $this->config = get_config('auth_db');
         if (empty($this->config->extencoding)) {
             $this->config->extencoding = 'utf-8';
         }
@@ -136,7 +136,6 @@ class auth_plugin_db extends auth_plugin_base {
             } else if ($this->config->passtype === 'sha1') {
                 return (strtolower($fromdb) == sha1($extpassword));
             } else if ($this->config->passtype === 'saltedcrypt') {
-                require_once($CFG->libdir.'/password_compat/lib/password.php');
                 return password_verify($extpassword, $fromdb);
             } else {
                 return false;
@@ -302,25 +301,38 @@ class auth_plugin_db extends auth_plugin_base {
 
             // Find obsolete users.
             if (count($userlist)) {
-                list($notin_sql, $params) = $DB->get_in_or_equal($userlist, SQL_PARAMS_NAMED, 'u', false);
+                $removeusers = array();
                 $params['authtype'] = $this->authtype;
-                $sql = "SELECT u.*
+                $sql = "SELECT u.id, u.username
                           FROM {user} u
-                         WHERE u.auth=:authtype AND u.deleted=0 AND u.mnethostid=:mnethostid $suspendselect AND u.username $notin_sql";
+                         WHERE u.auth=:authtype
+                           AND u.deleted=0
+                           AND u.mnethostid=:mnethostid
+                           $suspendselect";
+                $params['mnethostid'] = $CFG->mnet_localhost_id;
+                $internalusersrs = $DB->get_recordset_sql($sql, $params);
+
+                $usernamelist = array_flip($userlist);
+                foreach ($internalusersrs as $internaluser) {
+                    if (!array_key_exists($internaluser->username, $usernamelist)) {
+                        $removeusers[] = $internaluser;
+                    }
+                }
+                $internalusersrs->close();
             } else {
-                $sql = "SELECT u.*
+                $sql = "SELECT u.id, u.username
                           FROM {user} u
                          WHERE u.auth=:authtype AND u.deleted=0 AND u.mnethostid=:mnethostid $suspendselect";
                 $params = array();
                 $params['authtype'] = $this->authtype;
+                $params['mnethostid'] = $CFG->mnet_localhost_id;
+                $removeusers = $DB->get_records_sql($sql, $params);
             }
-            $params['mnethostid'] = $CFG->mnet_localhost_id;
-            $remove_users = $DB->get_records_sql($sql, $params);
 
-            if (!empty($remove_users)) {
-                $trace->output(get_string('auth_dbuserstoremove','auth_db', count($remove_users)));
+            if (!empty($removeusers)) {
+                $trace->output(get_string('auth_dbuserstoremove', 'auth_db', count($removeusers)));
 
-                foreach ($remove_users as $user) {
+                foreach ($removeusers as $user) {
                     if ($this->config->removeuser == AUTH_REMOVEUSER_FULLDELETE) {
                         delete_user($user);
                         $trace->output(get_string('auth_dbdeleteuser', 'auth_db', array('name'=>$user->username, 'id'=>$user->id)), 1);
@@ -333,7 +345,7 @@ class auth_plugin_db extends auth_plugin_base {
                     }
                 }
             }
-            unset($remove_users);
+            unset($removeusers);
         }
 
         if (!count($userlist)) {
@@ -358,12 +370,20 @@ class auth_plugin_db extends auth_plugin_base {
 
             // Only go ahead if we actually have fields to update locally.
             if (!empty($updatekeys)) {
-                list($in_sql, $params) = $DB->get_in_or_equal($userlist, SQL_PARAMS_NAMED, 'u', true);
-                $params['authtype'] = $this->authtype;
-                $sql = "SELECT u.id, u.username
+                $update_users = array();
+                // All the drivers can cope with chunks of 10,000. See line 4491 of lib/dml/tests/dml_est.php
+                $userlistchunks = array_chunk($userlist , 10000);
+                foreach($userlistchunks as $userlistchunk) {
+                    list($in_sql, $params) = $DB->get_in_or_equal($userlistchunk, SQL_PARAMS_NAMED, 'u', true);
+                    $params['authtype'] = $this->authtype;
+                    $params['mnethostid'] = $CFG->mnet_localhost_id;
+                    $sql = "SELECT u.id, u.username
                           FROM {user} u
-                         WHERE u.auth=:authtype AND u.deleted=0 AND u.username {$in_sql}";
-                if ($update_users = $DB->get_records_sql($sql, $params)) {
+                         WHERE u.auth = :authtype AND u.deleted = 0 AND u.mnethostid = :mnethostid AND u.username {$in_sql}";
+                    $update_users = $update_users + $DB->get_records_sql($sql, $params);
+                }
+
+                if ($update_users) {
                     $trace->output("User entries to update: ".count($update_users));
 
                     foreach ($update_users as $user) {
@@ -641,21 +661,6 @@ class auth_plugin_db extends auth_plugin_base {
         return true;
     }
 
-    /**
-     * A chance to validate form data, and last chance to
-     * do stuff before it is inserted in config_plugin
-     *
-     * @param stfdClass $form
-     * @param array $err errors
-     * @return void
-     */
-     function validate_form($form, &$err) {
-        if ($form->passtype === 'internal') {
-            $this->config->changepasswordurl = '';
-            set_config('changepasswordurl', '', 'auth/db');
-        }
-    }
-
     function prevent_local_passwords() {
         return !$this->is_internal();
     }
@@ -730,95 +735,6 @@ class auth_plugin_db extends auth_plugin_base {
      */
     function can_reset_password() {
         return $this->is_internal();
-    }
-
-    /**
-     * Prints a form for configuring this authentication plugin.
-     *
-     * This function is called from admin/auth.php, and outputs a full page with
-     * a form for configuring this plugin.
-     *
-     * @param stdClass $config
-     * @param array $err errors
-     * @param array $user_fields
-     * @return void
-     */
-    function config_form($config, $err, $user_fields) {
-        include 'config.html';
-    }
-
-    /**
-     * Processes and stores configuration data for this authentication plugin.
-     *
-     * @param srdClass $config
-     * @return bool always true or exception
-     */
-    function process_config($config) {
-        // set to defaults if undefined
-        if (!isset($config->host)) {
-            $config->host = 'localhost';
-        }
-        if (!isset($config->type)) {
-            $config->type = 'mysql';
-        }
-        if (!isset($config->sybasequoting)) {
-            $config->sybasequoting = 0;
-        }
-        if (!isset($config->name)) {
-            $config->name = '';
-        }
-        if (!isset($config->user)) {
-            $config->user = '';
-        }
-        if (!isset($config->pass)) {
-            $config->pass = '';
-        }
-        if (!isset($config->table)) {
-            $config->table = '';
-        }
-        if (!isset($config->fielduser)) {
-            $config->fielduser = '';
-        }
-        if (!isset($config->fieldpass)) {
-            $config->fieldpass = '';
-        }
-        if (!isset($config->passtype)) {
-            $config->passtype = 'plaintext';
-        }
-        if (!isset($config->extencoding)) {
-            $config->extencoding = 'utf-8';
-        }
-        if (!isset($config->setupsql)) {
-            $config->setupsql = '';
-        }
-        if (!isset($config->debugauthdb)) {
-            $config->debugauthdb = 0;
-        }
-        if (!isset($config->removeuser)) {
-            $config->removeuser = AUTH_REMOVEUSER_KEEP;
-        }
-        if (!isset($config->changepasswordurl)) {
-            $config->changepasswordurl = '';
-        }
-
-        // Save settings.
-        set_config('host',          $config->host,          'auth/db');
-        set_config('type',          $config->type,          'auth/db');
-        set_config('sybasequoting', $config->sybasequoting, 'auth/db');
-        set_config('name',          $config->name,          'auth/db');
-        set_config('user',          $config->user,          'auth/db');
-        set_config('pass',          $config->pass,          'auth/db');
-        set_config('table',         $config->table,         'auth/db');
-        set_config('fielduser',     $config->fielduser,     'auth/db');
-        set_config('fieldpass',     $config->fieldpass,     'auth/db');
-        set_config('passtype',      $config->passtype,      'auth/db');
-        set_config('extencoding',   trim($config->extencoding), 'auth/db');
-        set_config('setupsql',      trim($config->setupsql),'auth/db');
-        set_config('debugauthdb',   $config->debugauthdb,   'auth/db');
-        set_config('removeuser',    $config->removeuser,    'auth/db');
-        set_config('changepasswordurl', trim($config->changepasswordurl), 'auth/db');
-
-        return true;
     }
 
     /**
@@ -919,5 +835,3 @@ class auth_plugin_db extends auth_plugin_base {
         return core_user::clean_data($user);
     }
 }
-
-

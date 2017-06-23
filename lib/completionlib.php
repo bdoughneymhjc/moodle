@@ -423,6 +423,21 @@ class completion_info {
             // Load criteria from database
             $records = (array)$DB->get_records('course_completion_criteria', $params);
 
+            // Order records so activities are in the same order as they appear on the course view page.
+            if ($records) {
+                $activitiesorder = array_keys(get_fast_modinfo($this->course)->get_cms());
+                usort($records, function ($a, $b) use ($activitiesorder) {
+                    $aidx = ($a->criteriatype == COMPLETION_CRITERIA_TYPE_ACTIVITY) ?
+                        array_search($a->moduleinstance, $activitiesorder) : false;
+                    $bidx = ($b->criteriatype == COMPLETION_CRITERIA_TYPE_ACTIVITY) ?
+                        array_search($b->moduleinstance, $activitiesorder) : false;
+                    if ($aidx === false || $bidx === false || $aidx == $bidx) {
+                        return 0;
+                    }
+                    return ($aidx < $bidx) ? -1 : 1;
+                });
+            }
+
             // Build array of criteria objects
             $this->criteria = array();
             foreach ($records as $record) {
@@ -769,6 +784,7 @@ class completion_info {
 
         // Difficult to find affected users, just purge all completion cache.
         cache::make('core', 'completion')->purge();
+        cache::make('core', 'coursecompletion')->purge();
     }
 
     /**
@@ -820,6 +836,7 @@ class completion_info {
 
         // Difficult to find affected users, just purge all completion cache.
         cache::make('core', 'completion')->purge();
+        cache::make('core', 'coursecompletion')->purge();
     }
 
     /**
@@ -894,15 +911,16 @@ class completion_info {
         $usecache = $userid == $USER->id;
         $cacheddata = array();
         if ($usecache) {
+            $key = $userid . '_' . $this->course->id;
             if (!isset($this->course->cacherev)) {
                 $this->course = get_course($this->course_id);
             }
-            if ($cacheddata = $completioncache->get($userid . '_' . $this->course->id)) {
+            if ($cacheddata = $completioncache->get($key)) {
                 if ($cacheddata['cacherev'] != $this->course->cacherev) {
                     // Course structure has been changed since the last caching, forget the cache.
                     $cacheddata = array();
-                } else if (array_key_exists($cm->id, $cacheddata)) {
-                    return $cacheddata[$cm->id];
+                } else if (isset($cacheddata[$cm->id])) {
+                    return (object)$cacheddata[$cm->id];
                 }
             }
         }
@@ -921,10 +939,8 @@ class completion_info {
 
             // Reindex by cm id
             $alldata = array();
-            if ($alldatabycmc) {
-                foreach ($alldatabycmc as $data) {
-                    $alldata[$data->coursemoduleid] = $data;
-                }
+            foreach ($alldatabycmc as $data) {
+                $alldata[$data->coursemoduleid] = (array)$data;
             }
 
             // Get the module info and build up condition info for each one
@@ -932,17 +948,17 @@ class completion_info {
                 $modinfo = get_fast_modinfo($this->course, $userid);
             }
             foreach ($modinfo->cms as $othercm) {
-                if (array_key_exists($othercm->id, $alldata)) {
+                if (isset($alldata[$othercm->id])) {
                     $data = $alldata[$othercm->id];
                 } else {
                     // Row not present counts as 'not complete'
-                    $data = new StdClass;
-                    $data->id              = 0;
-                    $data->coursemoduleid  = $othercm->id;
-                    $data->userid          = $userid;
-                    $data->completionstate = 0;
-                    $data->viewed          = 0;
-                    $data->timemodified    = 0;
+                    $data = array();
+                    $data['id'] = 0;
+                    $data['coursemoduleid'] = $othercm->id;
+                    $data['userid'] = $userid;
+                    $data['completionstate'] = 0;
+                    $data['viewed'] = 0;
+                    $data['timemodified'] = 0;
                 }
                 $cacheddata[$othercm->id] = $data;
             }
@@ -954,15 +970,17 @@ class completion_info {
         } else {
             // Get single record
             $data = $DB->get_record('course_modules_completion', array('coursemoduleid'=>$cm->id, 'userid'=>$userid));
-            if ($data == false) {
+            if ($data) {
+                $data = (array)$data;
+            } else {
                 // Row not present counts as 'not complete'
-                $data = new StdClass;
-                $data->id              = 0;
-                $data->coursemoduleid  = $cm->id;
-                $data->userid          = $userid;
-                $data->completionstate = 0;
-                $data->viewed          = 0;
-                $data->timemodified    = 0;
+                $data = array();
+                $data['id'] = 0;
+                $data['coursemoduleid'] = $cm->id;
+                $data['userid'] = $userid;
+                $data['completionstate'] = 0;
+                $data['viewed'] = 0;
+                $data['timemodified'] = 0;
             }
 
             // Put in cache
@@ -971,9 +989,9 @@ class completion_info {
 
         if ($usecache) {
             $cacheddata['cacherev'] = $this->course->cacherev;
-            $completioncache->set($userid . '_' . $this->course->id, $cacheddata);
+            $completioncache->set($key, $cacheddata);
         }
-        return $cacheddata[$cm->id];
+        return (object)$cacheddata[$cm->id];
     }
 
     /**
@@ -1062,7 +1080,7 @@ class completion_info {
         $modinfo = get_fast_modinfo($this->course);
         $result = array();
         foreach ($modinfo->get_cms() as $cm) {
-            if ($cm->completion != COMPLETION_TRACKING_NONE) {
+            if ($cm->completion != COMPLETION_TRACKING_NONE && !$cm->deletioninprogress) {
                 $result[$cm->id] = $cm;
             }
         }

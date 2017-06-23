@@ -304,7 +304,7 @@ class mod_scorm_mod_form extends moodleform_mod {
                                            && ($defaultvalues['width'] <= 100)) {
             $defaultvalues['width'] .= '%';
         }
-        if (isset($defaultvalues['width']) && (strpos($defaultvalues['height'], '%') === false)
+        if (isset($defaultvalues['height']) && (strpos($defaultvalues['height'], '%') === false)
                                            && ($defaultvalues['height'] <= 100)) {
             $defaultvalues['height'] .= '%';
         }
@@ -442,6 +442,24 @@ class mod_scorm_mod_form extends moodleform_mod {
 
         }
 
+        // Validate availability dates.
+        if ($data['timeopen'] && $data['timeclose']) {
+            if ($data['timeopen'] > $data['timeclose']) {
+                $errors['timeclose'] = get_string('closebeforeopen', 'scorm');
+            }
+        }
+        if (!empty($data['completionstatusallscos'])) {
+            $requirestatus = false;
+            foreach (scorm_status_options(true) as $key => $value) {
+                if (!empty($data['completionstatusrequired'][$key])) {
+                    $requirestatus = true;
+                }
+            }
+            if (!$requirestatus) {
+                $errors['completionstatusallscos'] = get_string('youmustselectastatus', 'scorm');
+            }
+        }
+
         return $errors;
     }
 
@@ -501,10 +519,20 @@ class mod_scorm_mod_form extends moodleform_mod {
                 $firstkey = $key;
             }
             $mform->addElement('checkbox', $key, $name, $value);
+            // Default completion rule that requires the SCORM's status be set to "Completed".
+            if ($key === 'completionstatusrequired[4]') {
+                $mform->setDefault($key, 1);
+            }
             $mform->setType($key, PARAM_BOOL);
             $items[] = $key;
         }
         $mform->addHelpButton($firstkey, 'completionstatusrequired', 'scorm');
+
+        $mform->addElement('checkbox', 'completionstatusallscos', get_string('completionstatusallscos', 'scorm'));
+        $mform->setType('completionstatusallscos', PARAM_BOOL);
+        $mform->addHelpButton('completionstatusallscos', 'completionstatusallscos', 'scorm');
+        $mform->setDefault('completionstatusallscos', 0);
+        $items[] = 'completionstatusallscos';
 
         return $items;
     }
@@ -516,13 +544,16 @@ class mod_scorm_mod_form extends moodleform_mod {
         return $status || $score;
     }
 
-    public function get_data($slashed = true) {
-        $data = parent::get_data($slashed);
-
-        if (!$data) {
-            return false;
-        }
-
+    /**
+     * Allows module to modify the data returned by form get_data().
+     * This method is also called in the bulk activity completion form.
+     *
+     * Only available on moodleform_mod.
+     *
+     * @param stdClass $data the form data to be modified.
+     */
+    public function data_postprocessing($data) {
+        parent::data_postprocessing($data);
         // Convert completionstatusrequired to a proper integer, if any.
         $total = 0;
         if (isset($data->completionstatusrequired) && is_array($data->completionstatusrequired)) {
@@ -546,7 +577,5 @@ class mod_scorm_mod_form extends moodleform_mod {
                 $data->completionscorerequired = null;
             }
         }
-
-        return $data;
     }
 }

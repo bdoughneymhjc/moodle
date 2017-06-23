@@ -43,10 +43,6 @@ class core_webservice_externallib_testcase extends externallib_advanced_testcase
 
         $this->resetAfterTest(true);
 
-        // This is the info we are going to check
-        set_config('release', '2.4dev (Build: 20120823)');
-        set_config('version', '2012083100.00');
-
         $maxbytes = 10485760;
         $userquota = 5242880;
         set_config('maxbytes', $maxbytes);
@@ -95,10 +91,11 @@ class core_webservice_externallib_testcase extends externallib_advanced_testcase
         $this->assertEquals('Doe', $siteinfo['lastname']);
         $this->assertEquals(current_language(), $siteinfo['lang']);
         $this->assertEquals($USER->id, $siteinfo['userid']);
+        $this->assertEquals(SITEID, $siteinfo['siteid']);
         $this->assertEquals(true, $siteinfo['downloadfiles']);
         $this->assertEquals($CFG->release, $siteinfo['release']);
         $this->assertEquals($CFG->version, $siteinfo['version']);
-        $this->assertEquals($CFG->mobilecssurl, $siteinfo['mobilecssurl']);
+        $this->assertEquals('', $siteinfo['mobilecssurl']);
         $this->assertEquals(count($siteinfo['functions']), 1);
         $function = array_pop($siteinfo['functions']);
         $this->assertEquals($function['name'], 'core_course_get_contents');
@@ -151,9 +148,7 @@ class core_webservice_externallib_testcase extends externallib_advanced_testcase
         $siteinfo = external_api::clean_returnvalue(core_webservice_external::get_site_info_returns(), $siteinfo);
 
         $this->assertEquals(0, $siteinfo['userquota']);
-
-        // The max_size is dependant upon the post_max_size, and upload_max_filesize values in php.ini.
-        $this->assertEquals(get_max_upload_file_size(USER_CAN_IGNORE_FILE_SIZE_LIMITS), $siteinfo['usermaxuploadfilesize']);
+        $this->assertEquals(USER_CAN_IGNORE_FILE_SIZE_LIMITS, $siteinfo['usermaxuploadfilesize']);
         $this->assertEquals(true, $siteinfo['usercanmanageownfiles']);
 
         $this->assertEquals(HOMEPAGE_SITE, $siteinfo['userhomepage']);

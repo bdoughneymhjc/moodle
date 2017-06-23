@@ -95,6 +95,10 @@ class mod_assign_mod_form extends moodleform_mod {
         $mform->addElement('date_time_selector', 'cutoffdate', $name, array('optional'=>true));
         $mform->addHelpButton('cutoffdate', 'cutoffdate', 'assign');
 
+        $name = get_string('gradingduedate', 'assign');
+        $mform->addElement('date_time_selector', 'gradingduedate', $name, array('optional' => true));
+        $mform->addHelpButton('gradingduedate', 'gradingduedate', 'assign');
+
         $name = get_string('alwaysshowdescription', 'assign');
         $mform->addElement('checkbox', 'alwaysshowdescription', $name);
         $mform->addHelpButton('alwaysshowdescription', 'alwaysshowdescription', 'assign');
@@ -209,32 +213,6 @@ class mod_assign_mod_form extends moodleform_mod {
         $this->apply_admin_defaults();
 
         $this->add_action_buttons();
-
-        // Add warning popup/noscript tag, if grades are changed by user.
-        $hasgrade = false;
-        if (!empty($this->_instance)) {
-            $hasgrade = $DB->record_exists_select('assign_grades',
-                                                  'assignment = ? AND grade <> -1',
-                                                  array($this->_instance));
-        }
-
-        if ($mform->elementExists('grade') && $hasgrade) {
-            $module = array(
-                'name' => 'mod_assign',
-                'fullpath' => '/mod/assign/module.js',
-                'requires' => array('node', 'event'),
-                'strings' => array(array('changegradewarning', 'mod_assign'))
-                );
-            $PAGE->requires->js_init_call('M.mod_assign.init_grade_change', null, false, $module);
-
-            // Add noscript tag in case.
-            $noscriptwarning = $mform->createElement('static',
-                                                     'warning',
-                                                     null,
-                                                     html_writer::tag('noscript',
-                                                     get_string('changegradewarning', 'mod_assign')));
-            $mform->insertElementBefore($noscriptwarning, 'grade');
-        }
     }
 
     /**
@@ -305,7 +283,9 @@ class mod_assign_mod_form extends moodleform_mod {
     public function add_completion_rules() {
         $mform =& $this->_form;
 
-        $mform->addElement('checkbox', 'completionsubmit', '', get_string('completionsubmit', 'assign'));
+        $mform->addElement('advcheckbox', 'completionsubmit', '', get_string('completionsubmit', 'assign'));
+        // Enable this completion rule by default.
+        $mform->setDefault('completionsubmit', 1);
         return array('completionsubmit');
     }
 
